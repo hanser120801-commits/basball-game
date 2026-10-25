@@ -951,21 +951,107 @@ finishBracketRound=function(m,win){
 </script>
 
 
+
 <script>
-/* 賽後結算與累積統計（覆蓋上一版結算顯示流程） */
+/* 賽後結算：單場表現、MVP、累積 AVG／ERA */
 (function(){
-  const _finishWithStats=finishMatch;
-  // 結算按鈕依賽事狀態接回正確流程，避免蓋掉晉級畫面後無法進下一輪
-  const _renderBoxPrevious=renderBox;
-  renderBox=function(m){
-    let html=_renderBoxPrevious(m);
-    const btn=m.tournamentGame&&tournamentRun
-      ? (m.scoreUs>m.scoreThem
-          ? '<button class="primary" style="width:100%" onclick="closeModal();beginBracketRound()">查看籤表並進入下一輪 ▶</button>'
-          : '<button class="primary" style="width:100%" onclick="closeModal();tournamentRun=null;render()">確認結算，返回賽季</button>')
+  const _finishBeforeStats=finishMatch;
+  const _tacticBeforeStats=tactic;
+  const _applyBatterBeforeStats=applyBatterResult;
+  const _applyOpponentBeforeStats=applyOpponentResult;
+  function ensure(){
+    if(!G)return;
+    G.careerStats ||= {batting:{},pitching:{}};
+    G.careerStats.batting ||= {};G.careerStats.pitching ||= {};
+    for(const p of G.players||[]){
+      G.careerStats.batting[p.id] ||= {ab:0,h:0,hr:0,bb:0,k:0,rbi:0};
+      G.careerStats.pitching[p.id] ||= {outs:0,er:0,h:0,bb:0,k:0};
+    }
+  }
+  function bat(p){ensure();return p?(G.careerStats.batting[p.id] ||= {ab:0,h:0,hr:0,bb:0,k:0,rbi:0}):null}
+  function pit(p){ensure();return p?(G.careerStats.pitching[p.id] ||= {outs:0,er:0,h:0,bb:0,k:0}):null}
+  function box(m){return m.box ||= {bat:{},pit:{},opp:{}}}
+  function bline(m,p){if(!p)return null;return box(m).bat[p.id] ||= {name:p.name,ab:0,h:0,hr:0,bb:0,k:0,rbi:0}}
+  function pline(m,p){if(!p)return null;return box(m).pit[p.id] ||= {name:p.name,outs:0,er:0,h:0,bb:0,k:0}}
+  function pitchOut(m,p,n=1,k=false){const c=pit(p),l=pline(m,p);if(c&&l){c.outs+=n;l.outs+=n;if(k){c.k++;l.k++}}}
+  function recordBat(m,p,result,deltaRuns=0){
+    const c=bat(p),l=bline(m,p);if(!c||!l)return;
+    if(result==='保送'){c.bb++;l.bb++;}
+    else if(['一壘安打','二壘安打','三壘安打','全壘打','三振','接殺出局','雙殺','失誤上壘'].includes(result)){
+      c.ab++;l.ab++;if(['一壘安打','二壘安打','三壘安打','全壘打'].includes(result)){c.h++;l.h++;}
+      if(result==='全壘打'){c.hr++;l.hr++;}if(result==='三振'){c.k++;l.k++;}
+    }
+    if(deltaRuns>0){c.rbi+=deltaRuns;l.rbi+=deltaRuns;}
+  }
+  applyBatterResult=function(result,b){
+    const m=currentMatch;if(!m)return _applyBatterBeforeStats.apply(this,arguments);
+    box(m);const before=m.scoreUs||0;const r=_applyBatterBeforeStats.apply(this,arguments);recordBat(m,b,result,(m.scoreUs||0)-before);return r;
+  };
+  applyOpponentResult=function(result){
+    const m=currentMatch;if(!m)return _applyOpponentBeforeStats.apply(this,arguments);
+    box(m);const p=m.pitcher,old=m.scoreThem||0;const r=_applyOpponentBeforeStats.apply(this,arguments);
+    const c=pit(p),l=pline(m,p);
+    if(c&&l){
+      if(result==='保送'){c.bb++;l.bb++;}
+      if(['一壘安打','二壘安打','三壘安打','全壘打'].includes(result)){c.h++;l.h++;}
+      if(result==='三振'){c.k++;l.k++;pitchOut(m,p,1,false);}
+      else if(['接殺出局','雙殺'].includes(result))pitchOut(m,p,result==='雙殺'?2:1,false);
+      const runs=(m.scoreThem||0)-old;if(runs>0){c.er+=runs;l.er+=runs;}
+    }
+    return r;
+  };
+  tactic=function(k){
+    const m=currentMatch;if(!m)return _tacticBeforeStats.apply(this,arguments);
+    box(m);const beforeLogs=(m.logs||[]).length, b=m.batter, p=m.pitcher, side=m.active, oldUs=m.scoreUs||0,oldThem=m.scoreThem||0;
+    const r=_tacticBeforeStats.apply(this,arguments);
+    const lines=(m.logs||[]).slice(beforeLogs);
+    for(const line of lines){
+      if(side==='bat'){
+        if(line.includes('擊出安打'))recordBat(m,b,'一壘安打',(m.scoreUs||0)-oldUs);
+        else if(line.includes('擊出長打'))recordBat(m,b,'二壘安打',(m.scoreUs||0)-oldUs);
+        else if(line.includes('擊球出局')){recordBat(m,b,'接殺出局');pitchOut(m,p,1,false);}
+        else if(line.includes('保送'))recordBat(m,b,'保送');
+      }else{
+        const c=pit(p),l=pline(m,p);
+        if(/對方打者結果：.*安打/.test(line)){if(c&&l){c.h++;l.h++;}}
+        if(line.includes('三振')){if(c&&l){c.k++;l.k++;}pitchOut(m,p,1,false);}
+        else if(line.includes('接殺出局'))pitchOut(m,p,1,false);
+        if(line.includes('保送')&&c&&l){c.bb++;l.bb++;}
+      }
+    }
+    const runs=(m.scoreThem||0)-oldThem;if(side==='field'&&runs>0){const c=pit(p),l=pline(m,p);if(c&&l){c.er+=runs;l.er+=runs;}}
+    return r;
+  };
+  function fmtAvg(x){return x.ab?(x.h/x.ab).toFixed(3).replace(/^0/,''):'.000'}
+  function fmtEra(x){return x.outs?(x.er*27/x.outs).toFixed(2):(x.er?'∞':'0.00')}
+  function showBox(m){
+    ensure();const z=box(m),batting=Object.values(z.bat),pitching=Object.values(z.pit),opp=Object.values(z.opp);
+    const sortedBat=bat.slice().sort((a,b)=>b.h*2+b.hr*2+b.rbi-(a.h*2+a.hr*2+a.rbi));
+    const sortedPit=pitching.slice().sort((a,b)=>b.k*2+b.outs-b.er*2-(a.k*2+a.outs-a.er*2));
+    const bestUs=sortedBat[0]||sortedPit[0],bestOpp=opp.slice().sort((a,b)=>b.h*2+b.hr*2+b.rbi-(a.h*2+a.hr*2+a.rbi))[0];
+    const usValue=bestUs?(bestUs.h||0)*2+(bestUs.hr||0)*2+(bestUs.rbi||0)*2+(bestUs.k||0)*.5:0;
+    const oppValue=bestOpp?(bestOpp.h||0)*2+(bestOpp.hr||0)*2+(bestOpp.rbi||0)*2:0;
+    const oursMvp=!!bestUs&&(!bestOpp||usValue>=oppValue);
+    const mvp=oursMvp?(bestUs.name):(bestOpp?bestOpp.name:'尚無足夠紀錄');
+    const mvpTeam=oursMvp?G.school:(m.team||'對方球隊');
+    const rows=(arr,cols)=>arr.length?arr.map(x=>'<tr><td>'+x.name+'</td>'+cols.map(c=>'<td>'+c(x)+'</td>').join('')+'</tr>').join(''):'<tr><td colspan="8">本場沒有可顯示的紀錄</td></tr>';
+    const bRows=rows(batting,[x=>x.ab,x=>x.h,x=>x.hr,x=>x.bb,x=>x.k,x=>x.rbi]);
+    const pRows=rows(pitching,[x=>Math.floor(x.outs/3)+'.'+x.outs%3,x=>x.h,x=>x.er,x=>x.k,x=>x.bb,x=>fmtEra(x)]);
+    const oRows=rows(opp,[x=>x.ab,x=>x.h,x=>x.hr,x=>x.bb,x=>x.k,x=>x.rbi]);
+    const careerBat=rows((G.players||[]).map(p=>({name:p.name,...bat(p)})),[x=>x.ab,x=>x.h,x=>fmtAvg(x),x=>x.hr]);
+    const careerPit=rows((G.players||[]).filter(p=>p.pos==='投手'||pit(p).outs>0).map(p=>({name:p.name,...pit(p)})),[x=>Math.floor(x.outs/3)+'.'+x.outs%3,x=>x.er,x=>x.k,x=>fmtEra(x)]);
+    const button=m.tournamentGame&&tournamentRun
+      ? (m.scoreUs>m.scoreThem?'<button class="primary" style="width:100%" onclick="closeModal();beginBracketRound()">查看籤表並進入下一輪 ▶</button>':'<button class="primary" style="width:100%" onclick="closeModal();tournamentRun=null;render()">確認結算，返回賽季</button>')
       : '<button class="primary" style="width:100%" onclick="closeModal();render()">確認並返回賽季</button>';
-    html=html.replace(/<button class="primary" style="width:100%" onclick="closeModal\(\);render\(\)">確認並返回賽季<\/button>/,btn);
-    return html;
+    const css='<style>.stats-table{width:100%;border-collapse:collapse;font-size:12px;margin:8px 0}.stats-table th,.stats-table td{border:1px solid #7775;padding:6px 5px;text-align:center;white-space:nowrap}.stats-table th{background:#56735a;color:#fff}</style>';
+    modal(css+'<div class="ceremony" style="text-align:left;max-height:80vh;overflow:auto"><div style="text-align:center;font-size:30px">📋⚾</div><h2 style="text-align:center">賽後結算・技術統計</h2><div class="stat" style="text-align:center"><h3>'+G.school+' '+m.scoreUs+'：'+m.scoreThem+' '+m.team+'</h3><p>'+m.name+'｜'+(m.scoreUs>m.scoreThem?'我方獲勝':m.scoreUs<m.scoreThem?'我方落敗':'平手')+'</p></div><div class="stat"><h3>🏅 本場 MVP：'+mvp+'</h3><p>所屬球隊：'+mvpTeam+'</p><p>依本場打擊與投球貢獻評選，對方球員也可能獲選。</p></div><h3>⚾ 我方打者表現</h3><div style="overflow-x:auto"><table class="stats-table"><tr><th>球員</th><th>打數</th><th>安打</th><th>全壘打</th><th>保送</th><th>三振</th><th>打點</th></tr>'+bRows+'</table></div><h3>🧤 我方投手表現</h3><div style="overflow-x:auto"><table class="stats-table"><tr><th>投手</th><th>局數</th><th>被安打</th><th>責失</th><th>三振</th><th>保送</th><th>單場 ERA</th></tr>'+pRows+'</table></div><h3>🆚 對方打者（MVP 候選）</h3><div style="overflow-x:auto"><table class="stats-table"><tr><th>球員</th><th>打數</th><th>安打</th><th>全壘打</th><th>保送</th><th>三振</th><th>打點</th></tr>'+oRows+'</table></div><h3>📈 累積打擊率 AVG</h3><div style="overflow-x:auto"><table class="stats-table"><tr><th>球員</th><th>打數</th><th>安打</th><th>AVG</th><th>全壘打</th></tr>'+careerBat+'</table></div><h3>📉 累積投手 ERA</h3><div style="overflow-x:auto"><table class="stats-table"><tr><th>投手</th><th>投球局數</th><th>責失</th><th>三振</th><th>ERA</th></tr>'+careerPit+'</table></div><p class="muted">AVG＝安打÷打數；ERA＝責失分×27÷出局數。局數以「局數.出局數」顯示。</p>'+button+'</div>');
+  }
+  finishMatch=function(){
+    const m=currentMatch;if(!m)return;
+    ensure();box(m);
+    // 統計結算前先保存比賽參照；原流程仍負責賽事進度及紀錄
+    _finishBeforeStats.apply(this,arguments);
+    showBox(m);
   };
 })();
 </script>
