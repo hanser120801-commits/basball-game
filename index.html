@@ -836,4 +836,56 @@ lineupSetup = function(){
 };
 </script>
 
+<script>
+/* 壘上跑者走力提示與多輪淘汰賽 */
+let tournamentRun=null;
+const _finishMatchBeforeBracket=finishMatch;
+function bracketRoundName(total,round){const teams=total>>(round-1);if(teams===2)return '決賽';if(teams===4)return '四強／準決賽';if(teams===8)return '八強';if(teams===16)return '十六強';return '第 '+round+' 輪'}
+function bracketShuffle(a){const x=a.slice();for(let i=x.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[x[i],x[j]]=[x[j],x[i]]}return x}
+function makeBracket(type){
+ const count=type==='spring'||type==='koshien'?32:16;
+ const base=['青森豪農','大阪桐蔭風格學園','京都鳳凰','橫濱明星','仙台青葉','名古屋龍星','沖繩海風','東京帝都','福岡烈火','札幌雪峰','神戶海港','廣島鯉城','長野山岳','千葉海星','埼玉蒼龍','熊本火山'];
+ const opp=Array.from({length:count-1},(_,i)=>({id:'opp'+i,name:base[i%base.length]+(i>=base.length?'代表 '+(i+1):''),strength:clamp(G.rep*7+rand(25,45)+Math.floor((G.year-1)*1.8),25,90),teamRep:clamp(G.rep+rand(-2,2),0,4)}));
+ const user={id:'user',name:G.school,strength:clamp(G.players.reduce((a,p)=>a+calc(p),0)/Math.max(1,G.players.length),25,95),teamRep:G.rep};
+ const entrants=bracketShuffle([user,...opp]),rounds=[[]];for(let i=0;i<entrants.length;i+=2)rounds[0].push({a:entrants[i],b:entrants[i+1],winner:null,played:false});
+ return {type,entrants,rounds,round:0,done:false};
+}
+function startTournament(type){
+ if(type==='practice'){_startTournamentWithPreview(type);return}
+ if(type==='koshien'&&!G.championSummer){modal('<h2>尚未取得夏甲資格</h2><p>請先贏得夏季地方大會，取得代表資格。</p><button onclick="closeModal()">返回</button>');return}
+ if(type==='regional'&&!G.autumnLocalWon){modal('<h2>尚未取得地區大會資格</h2><p>請先贏得秋季地方大會。</p><button onclick="closeModal()">返回</button>');return}
+ if(type==='spring'&&!G.springQualified){modal('<h2>尚未獲選春甲</h2><p>春甲採邀請選拔。請先完成秋季地方／地區大會，累積成績後取得遊戲內選拔資格。</p><button onclick="closeModal()">返回</button>');return}
+ tournamentRun=makeBracket(type);const t=tournamentRun;
+ const names={summer:'夏季地方大會',koshien:'夏季甲子園大賽',autumn:'秋季地方大會',regional:'秋季地區大會',spring:'春季選拔甲子園（春甲）'};
+ const games=t.rounds[0].map((g,i)=>'<div class="stat" style="margin:5px 0;display:flex;justify-content:space-between;gap:6px"><span>'+g.a.name+'</span><b>VS</b><span>'+g.b.name+'</span></div>').join('');
+ modal('<div class="ceremony" style="text-align:left"><h2 style="text-align:center">🎲 '+names[type]+'・組合抽籤</h2><p>抽籤完成！本賽事採單敗淘汰，輸球即止步；每輪勝出後進入下一輪，直到決賽。</p><div class="stat"><b>'+t.entrants.length+' 校籤表</b><p>共 '+Math.log2(t.entrants.length)+' 輪，第一輪：'+bracketRoundName(t.entrants.length,1)+'</p></div>'+games+'<p class="muted">地方賽以 16 校籤表模擬；春甲使用 32 校籤表。現實夏甲全國賽為 49 支代表校，本作以 32 校籤表模擬多輪玩法，未完整重現 49 校輪空配置。</p><button class="primary" style="width:100%" onclick="beginBracketRound()">確認抽籤，進入首戰 ▶</button><button style="width:100%;margin-top:6px" onclick="closeModal();tournamentRun=null">取消</button></div>');
+}
+function beginBracketRound(){
+ const t=tournamentRun;if(!t)return;const round=t.rounds[t.round];if(!round)return;
+ const g=round.find(x=>x.a.id==='user'||x.b.id==='user');if(!g){modal('<h2>籤表錯誤</h2><button onclick="closeModal();tournamentRun=null">返回</button>');return}
+ t.currentGame=g;t.currentOpponent=g.a.id==='user'?g.b:g.a;closeModal();_startTournamentWithPreview(t.type);
+ if(currentMatch){currentMatch.name=({summer:'夏季地方大會',koshien:'夏季甲子園大賽',autumn:'秋季地方大會',regional:'秋季地區大會',spring:'春季選拔甲子園（春甲）'}[t.type]||'校際賽')+'・'+bracketRoundName(t.entrants.length,t.round+1);currentMatch.team=t.currentOpponent.name;currentMatch.strength=t.currentOpponent.strength;currentMatch.teamRep=t.currentOpponent.teamRep;currentMatch.tournamentGame=true}
+}
+function bracketMarkup(){const t=tournamentRun;if(!t)return '';return t.rounds.map((r,i)=>'<div class="panel" style="margin:8px 0"><h3>'+bracketRoundName(t.entrants.length,i+1)+'</h3>'+r.map(g=>'<div class="stat" style="margin:5px 0">'+g.a.name+' VS '+g.b.name+(g.winner?' → '+g.winner.name:'')+'</div>').join('')+'</div>').join('')}
+function finishBracketRound(m,win){
+ const t=tournamentRun;if(!t||!m.tournamentGame||t.done)return;const round=t.rounds[t.round],g=t.currentGame;if(!g)return;
+ g.played=true;g.winner=win?{id:'user',name:G.school}:t.currentOpponent;
+ for(const x of round){if(x===g)continue;x.played=true;x.winner=Math.random()<.5?x.a:x.b}
+ const winners=round.map(x=>x.winner).filter(Boolean);
+ if(winners.length===1){
+  t.done=true;
+  if(win){if(t.type==='summer'){G.championSummer=true;G.events.summer='地方大會優勝！';G.money+=150000;G.rep=Math.min(4,G.rep+1)}if(t.type==='autumn'){G.autumnLocalWon=true;G.events.autumn='地方大會優勝！';G.springQualified=true}if(t.type==='regional'){G.events.regional='地區大會優勝！';G.springQualified=true}if(t.type==='spring')G.events.spring='春甲優勝！';if(t.type==='koshien')G.events.koshien='夏季甲子園優勝！'}
+  modal('<div class="ceremony"><div class="trophy">'+(win?'🏆':'⚾')+'</div><h1>'+(win?'賽事冠軍！':'賽事結束')+'</h1><p>'+(win?'恭喜完成整個多輪淘汰賽並奪冠！':'本輪落敗，結束本次賽事。')+'</p>'+bracketMarkup()+'<button class="primary" onclick="closeModal();tournamentRun=null;render()">返回賽季</button></div>');return;
+ }
+ const next=[];for(let i=0;i<winners.length;i+=2)next.push({a:winners[i],b:winners[i+1],winner:null,played:false});t.round++;t.rounds.push(next);
+ modal('<div class="ceremony" style="text-align:left"><h2 style="text-align:center">'+(win?'🎉 晉級成功！':'比賽結束')+'</h2><div class="stat"><p>本場結果：'+(win?'我方獲勝，晉級下一輪':'我方落敗，遭淘汰')+'</p><p>賽事進度：'+t.round+' / '+Math.log2(t.entrants.length)+' 輪</p></div>'+bracketMarkup()+(win?'<button class="primary" style="width:100%" onclick="beginBracketRound()">下一輪：'+bracketRoundName(t.entrants.length,t.round+1)+' ▶</button>':'<button class="primary" style="width:100%" onclick="closeModal();tournamentRun=null;render()">返回賽季</button>')+'</div>');
+}
+finishMatch=function(){const m=currentMatch;const isBracket=!!(m&&m.tournamentGame&&tournamentRun);const win=!!(m&&(m.scoreUs>m.scoreThem||m.won));_finishMatchBeforeBracket();if(isBracket)finishBracketRound(m,win)};
+scheduleHTML=function(){
+ const items=[[3,'春季選拔甲子園（春甲）','spring'],[4,'春季練習賽','practice'],[5,'春季練習賽','practice'],[6,'夏季地方大會（預賽）','summer'],[7,'夏季地方大會（預賽）','summer'],[8,'夏季甲子園大賽','koshien'],[9,'秋季地方大會','autumn'],[10,'秋季地區大會','regional'],[11,'秋季練習賽','practice']];
+ return '<div class="grid"><section class="panel"><h2>📅 賽季日程</h2><p>正式賽先抽籤，再依勝負逐輪晉級。</p>'+items.map(([mo,n,t])=>'<div class="between stat" style="margin:7px 0;gap:8px"><span>'+mo+'月　'+n+'</span><button class="primary" onclick="startTournament(\''+t+'\')">查看賽程／開賽</button></div>').join('')+'<button onclick="advanceMonth()">前進下一個月 ▶</button></section><aside class="panel"><h2>🏆 賽季紀錄</h2><p>夏季地方大會：'+(G.events.summer||'尚未舉行')+'</p><p>秋季地方大會：'+(G.events.autumn||'尚未舉行')+'</p><p>秋季地區大會：'+(G.events.regional||'尚未舉行')+'</p><p>春季選拔：'+(G.events.spring||'尚未舉行')+'</p><p>夏季甲子園：'+(G.events.koshien||'尚未舉行')+'</p></aside></div>';
+};
+const _matchScreenBeforeSpeedInfo=matchScreen;
+matchScreen=function(){_matchScreenBeforeSpeedInfo();const m=currentMatch;if(!m)return;const root=document.querySelector('#modalRoot .modal');if(!root)return;const base=[...root.querySelectorAll('.panel')].find(p=>p.textContent.includes('壘包情報'));if(base){const details=m.bases.map((r,i)=>r?'<div class="stat" style="margin:5px 0"><b>'+(i+1)+' 壘：</b>'+(r.name||'跑者')+'　｜　走力 <strong>'+(r.speed??50)+'</strong>/100　｜　盜壘成功估計 '+Math.round(clamp((r.speed??50)*0.72+12,15,88))+'%</div>':'<div class="muted">'+(i+1)+' 壘：目前無跑者</div>').join('');const box=document.createElement('div');box.innerHTML='<div style="margin-top:8px"><h4>🏃 壘上跑者資訊（盜壘判斷）</h4>'+details+'</div>';base.appendChild(box)}const steal=[...root.querySelectorAll('button')].find(b=>b.textContent.includes('盜壘'));if(steal&&m.active==='bat'&&hasScoringPosition(m))steal.textContent='🏃 盜壘（依走力判斷）'};
+</script>
 </body></html>
