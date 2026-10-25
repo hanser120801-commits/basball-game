@@ -1055,4 +1055,68 @@ finishBracketRound=function(m,win){
   };
 })();
 </script>
+
+
+<script>
+/* 表現影響個人聲譽：MVP、單場亮眼表現、穩定表現會提升選秀評價 */
+(function(){
+ const _finishBeforeReputation=finishMatch;
+ function ensureReputationStats(){
+   G.careerStats ||= {batting:{},pitching:{}};
+   G.careerStats.batting ||= {};G.careerStats.pitching ||= {};
+   G.performanceRecord ||= {};
+   for(const p of G.players||[]){
+     G.performanceRecord[p.id] ||= {games:0,goodGames:0,mvps:0};
+   }
+ }
+ function evaluateReputation(m){
+   if(!G||!m)return;
+   ensureReputationStats();
+   const z=m.box||{bat:{},pit:{},opp:{}};
+   const bats=Object.values(z.bat||{}),pits=Object.values(z.pit||{}),opp=Object.values(z.opp||{});
+   const batScore=x=>(x.h||0)*2+(x.hr||0)*3+(x.rbi||0)*2+(x.bb||0)*.5-(x.k||0)*.35;
+   const pitScore=x=>(x.k||0)*1.4+(x.outs||0)*.45-(x.er||0)*2-(x.bb||0)*.4;
+   const ours=[...bats.map(x=>({...x,kind:'bat'})),...pits.map(x=>({...x,kind:'pit'}))];
+   const opponents=[...opp.map(x=>({...x,kind:'bat'}))];
+   const sortedUs=ours.sort((a,b)=>(b.kind==='pit'?pitScore(b):batScore(b))-(a.kind==='pit'?pitScore(a):batScore(a)));
+   const bestUs=sortedUs[0],bestOpp=opponents.sort((a,b)=>batScore(b)-batScore(a))[0];
+   const usScore=bestUs?(bestUs.kind==='pit'?pitScore(bestUs):batScore(bestUs)):0;
+   const oppScore=bestOpp?batScore(bestOpp):0;
+   const oursMvp=!!bestUs&&(!bestOpp||usScore>=oppScore);
+   const mvpName=oursMvp?bestUs.name:(bestOpp?bestOpp.name:'');
+   for(const p of G.players||[]){
+     const record=G.performanceRecord[p.id];
+     const b=(z.bat||{})[p.id],pi=(z.pit||{})[p.id];
+     const score=(b?batScore(b):0)+(pi?pitScore(pi):0);
+     const played=!!(b&&(b.ab||b.bb)||pi&&(pi.outs||pi.k||pi.h||pi.bb));
+     if(!played)continue;
+     record.games++;
+     let gain=0,reason=[];
+     if(b&&((b.h||0)>=2||(b.hr||0)>0||(b.rbi||0)>=2)){
+       gain+=1;reason.push('打擊表現出色');
+     }
+     if(pi&&((pi.k||0)>=3&&(pi.er||0)<=2)){
+       gain+=1;reason.push('投球表現出色');
+     }
+     if(score>=5){gain+=1;reason.push('單場綜合表現優異');}
+     if(record.games>=3&&record.games%3===0&&record.goodGames>=2){gain+=1;reason.push('持續穩定發揮');}
+     if(gain>0)record.goodGames++;
+     if(p.name===mvpName&&oursMvp){
+       gain+=3;record.mvps++;reason.unshift('獲選本場 MVP');
+     }
+     if(gain>0){
+       const before=p.reputation||0;
+       p.reputation=clamp(before+Math.min(5,gain),0,100);
+       log('⭐ '+p.name+' 個人聲譽 +'+(p.reputation-before)+'（'+reason.join('、')+'），目前聲譽 '+p.reputation+'。');
+     }
+   }
+   // 對方 MVP 也會在結算中顯示，但不修改我方名冊聲譽。
+ }
+ finishMatch=function(){
+   const m=currentMatch;
+   if(m) evaluateReputation(m);
+   return _finishBeforeReputation.apply(this,arguments);
+ };
+})();
+</script>
 </body></html>
