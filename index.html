@@ -1461,3 +1461,67 @@ function autoPlayMatch(){
  };
 })();
 </script>
+
+
+<script>
+/* 2026-10-26：先發守位唯一、DH／二刀流與投手退場後的DH補位流程 */
+(function(){
+ const escLine=s=>String(s??'—').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+ const oldLineupSetup=lineupSetup;
+ lineupSetup=function(){
+  const m=currentMatch,fielders=G.players.filter(p=>p.pos!=='投手'),pitchers=G.players.filter(p=>p.pos==='投手');
+  const positions=['捕手','一壘手','二壘手','三壘手','游擊手','左外野手','中外野手','右外野手'];
+  const bestByPos=positions.map(pos=>fielders.filter(p=>p.pos===pos).sort((a,b)=>calc(b)-calc(a))[0]).filter(Boolean);
+  const used=new Set(),defaults=[];
+  for(const pos of positions){const p=bestByPos.find(x=>x.pos===pos&&!used.has(x.id));if(p){defaults.push(p);used.add(p.id)}}
+  // 若球隊缺少特定守位球員，仍顯示候選名單，但確認時會要求守位唯一。
+  const opts=fielders.map(p=>'<option value="'+p.id+'">'+escLine(p.name)+'（'+p.pos+'）｜打擊 '+p.contact+'｜長打 '+p.power+'｜走力 '+p.speed+'｜守備 '+p.field+'</option>').join('');
+  const dhOpts=G.players.map(p=>'<option value="'+p.id+'">'+escLine(p.name)+'（'+p.pos+'）｜打擊 '+p.contact+'｜長打 '+p.power+'｜走力 '+p.speed+'｜守備 '+p.field+(p.pos==='投手'?'｜可二刀流':'')+'</option>').join('');
+  const selectedPitcher=pitchers.slice().sort((a,b)=>(b.pitchSpeed||0)-(a.pitchSpeed||0))[0]?.id;
+  const rows=Array.from({length:8},(_,i)=>{
+   const p=defaults[i]||fielders.find(x=>!used.has(x.id));if(p)used.add(p.id);
+   return '<div class="lineup-row"><b>'+(i+1)+'棒</b><select id="lineup'+i+'" style="width:100%">'+fielders.map(x=>'<option value="'+x.id+'" '+(p?.id===x.id?'selected':'')+'>'+escLine(x.name)+'（'+x.pos+'）｜打擊 '+x.contact+'｜長打 '+x.power+'｜走力 '+x.speed+'｜守備 '+x.field+'</option>').join('')+'</select></div>';
+  }).join('');
+  const defaultDh=G.players.filter(p=>p.pos!=='投手'&&!defaults.some(x=>x.id===p.id)).sort((a,b)=>calc(b)-calc(a))[0]||pitchers[0];
+  modal('<h2>📋 賽前先發陣容</h2><p>'+escLine(m.name)+'　對手：'+escLine(m.team)+'</p><p>先發守備位置不可重複；前八棒安排八個不同守位，第九棒為 DH（指定打擊）。DH 可選任何球員，包含先發投手；若選先發投手，該投手將同時投球與打擊。</p><div class="panel"><label>⚾ 先發投手</label><select id="starterPitcher" style="width:100%;margin-top:6px">'+pitchers.map(p=>'<option value="'+p.id+'" '+(p.id===selectedPitcher?'selected':'')+'>'+escLine(p.name)+'｜球速 '+p.pitchSpeed+'｜控球 '+p.control+'｜體力 '+p.stamina+'%｜綜合 '+calc(p)+'</option>').join('')+'</select></div><h3 style="margin-top:12px">先發打序（前八棒守位不可重複）</h3><div id="lineupRows">'+rows+'</div><div class="lineup-row"><b>9棒 DH</b><select id="lineupDH" style="width:100%">'+dhOpts+'</select></div><button class="primary" style="width:100%;margin-top:12px" onclick="confirmLineup()">確認先發，開始比賽</button><button style="width:100%;margin-top:7px" onclick="closeModal()">取消</button>');
+  if(defaultDh){const el=$('lineupDH');if(el)el.value=String(defaultDh.id)}
+ };
+ confirmLineup=function(){
+  const m=currentMatch,sp=$('starterPitcher');if(!sp){alert('請先選擇先發投手。');return}
+  const pitcher=G.players.find(p=>p.id===+sp.value),ids=Array.from({length:8},(_,i)=>+$('lineup'+i).value),dhId=+$('lineupDH').value;
+  const allIds=[...ids,dhId],players=allIds.map(id=>G.players.find(p=>p.id===id));
+  if(players.some(p=>!p)){alert('請確認所有棒次都有選擇球員。');return}
+  if(new Set(allIds).size!==9){alert('先發球員不可重複，DH 也不能和其他棒次使用同一名球員。');return}
+  const selected=ids.map(id=>G.players.find(p=>p.id===id)),positions=selected.map(p=>p.pos);
+  if(positions.includes('投手')){alert('前八棒請選擇守備球員；投手若要打擊，請安排在第九棒 DH。');return}
+  if(new Set(positions).size!==8){const duplicates=positions.filter((p,i)=>positions.indexOf(p)!==i);alert('守位不可重複：'+[...new Set(duplicates)].join('、')+' 已被多名先發球員選用，請調整棒次。');return}
+  m.pitcher=pitcher;m.lineup=[...ids,dhId];m.dhId=dhId;m.dhActive=true;m.dhPitcherId=dhId===pitcher.id?pitcher.id:null;m.dhVacant=false;
+  m.lineupIndex=0;m.batter=G.players.find(p=>p.id===m.lineup[0]);m.usedIds=[...allIds,pitcher.id];m.active='bat';m.half='top';m.inning=1;m.outs=0;m.bases=[null,null,null];
+  m.logs.push('先發投手：'+pitcher.name+'；DH：'+(G.players.find(p=>p.id===dhId)?.name||'未設定')+(dhId===pitcher.id?'（投手兼任DH，二刀流）':'')+'；先發守位已確認。');matchScreen();
+ };
+ const oldSubPitcher=subPitcher;
+ subPitcher=function(id){
+  const m=currentMatch,old=m?.pitcher;
+  oldSubPitcher(id);
+  if(!m||!old||old.id===id)return;
+  if(m.dhActive&&m.dhId===old.id){
+   m.dhVacant=true;m.dhPitcherId=null;
+   chooseDHReplacement();
+  }
+ };
+ chooseDHReplacement=function(){
+  const m=currentMatch;if(!m)return;
+  const opts=G.players.filter(p=>!(m.usedIds||[]).includes(p.id)&&p.id!==m.pitcher?.id);
+  modal('<h2>⚠️ DH 空缺，需要指定替補</h2><p>原本兼任 DH 的投手已退場，請選一名尚未上場的替補球員接替 DH。請比較能力後再選擇。</p>'+
+   (opts.map(p=>'<div class="stat"><b>'+escLine(p.name)+'｜'+escLine(p.pos)+'｜'+escLine(p.year||'')+'年級</b><p>綜合 '+calc(p)+'｜打擊 '+p.contact+'｜長打 '+p.power+'｜走力 '+p.speed+'｜守備 '+p.field+(p.pos==='投手'?'｜球速 '+p.pitchSpeed+'｜控球 '+p.control:'')+'</p><button class="primary" style="width:100%" onclick="replaceDH('+p.id+')">由 '+escLine(p.name)+' 接替 DH</button></div>').join('')||'<p>目前沒有可用的替補球員。</p>'));
+ };
+ replaceDH=function(id){
+  const m=currentMatch,p=G.players.find(x=>x.id===id);if(!m||!p||!m.dhVacant||(m.usedIds||[]).includes(id))return;
+  const oldDh=m.dhId;m.dhId=p.id;m.dhActive=true;m.dhVacant=false;
+  if(m.lineup?.length>=9)m.lineup[8]=p.id;
+  m.usedIds ||= [];if(!m.usedIds.includes(p.id))m.usedIds.push(p.id);
+  m.logs.push('DH 替補：'+p.name+'（打擊 '+p.contact+'、長打 '+p.power+'、走力 '+p.speed+'）接替指定打擊。');
+  matchScreen();
+ };
+})();
+</script>
