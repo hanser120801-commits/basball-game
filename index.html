@@ -120,4 +120,85 @@ function subBatter(id){const p=G.players.find(x=>x.id===id),m=currentMatch;if(!p
 function chooseRunnerSub(){const m=currentMatch,idx=m.bases.findIndex(Boolean);if(idx<0){alert('目前壘上沒有跑者可以替換。');return}const opts=G.players.filter(p=>p.pos!=='投手'&&!m.usedIds.includes(p.id));modal('<h2>🏃 替換跑者</h2><p>目前跑者：'+m.bases[idx].name+'（走力 '+m.bases[idx].speed+'）</p><p>請比較替補球員走力後選擇。</p>'+opts.map(p=>playerCard(p)+'<button class="primary" style="width:100%" onclick="subRunner('+idx+','+p.id+')">由 '+p.name+' 代跑</button>').join('')+'<button style="width:100%;margin-top:8px" onclick="matchScreen()">返回比賽</button>')}
 function subRunner(idx,id){const p=G.players.find(x=>x.id===id);if(!p)return;currentMatch.bases[idx]=p;currentMatch.usedIds.push(id);currentMatch.logs.push('代跑：'+p.name+' 進入'+['一','二','三'][idx]+'壘。');matchScreen()}
 </script>
+
+<style>
+/* 修正傳統棒球內野圖：四個壘包中心精準落在菱形四角 */
+.diamond{width:210px!important;height:210px!important;margin:8px auto!important;border:0!important;background:transparent!important;transform:none!important;overflow:visible!important}
+.diamond:before{content:"";position:absolute;width:142px;height:142px;left:34px;top:34px;transform:rotate(45deg);border:2px solid #e0c48a;background:#39794d;box-shadow:inset 0 0 0 2px #2b633d;border-radius:0}
+.diamond .base{position:absolute!important;z-index:3;width:17px!important;height:17px!important;transform:none!important;background:#fff!important;border:2px solid #9b7546!important;border-radius:1px!important}
+.diamond .b1{left:151px!important;top:96px!important}
+.diamond .b2{left:96px!important;top:41px!important}
+.diamond .b3{left:41px!important;top:96px!important}
+.diamond .home{left:96px!important;top:151px!important;width:18px!important;height:18px!important;clip-path:polygon(0 0,100% 0,100% 70%,50% 100%,0 70%)!important}
+.diamond .base.on{background:#ffd85c!important;box-shadow:0 0 0 3px #f5a623!important}
+.baseperson{position:absolute;z-index:4;max-width:105px;font-size:10px;line-height:1.2;background:#12283bdc;color:#fff1c9;padding:2px 4px;border-radius:4px;white-space:nowrap}
+.lineup-row{display:grid;grid-template-columns:42px minmax(0,1fr);gap:6px;align-items:center;margin:7px 0}
+.lineup-row select{width:100%;min-width:0;background:#f4ead4;color:#1c2c3d;padding:7px;border-radius:5px}
+</style>
+<script>
+/* 明確移除訓練費用字樣，並讓事件每月更有變化 */
+function trainingHTML(){
+ const used=!!G.trainingUsed;
+ return '<div class="grid"><section class="panel"><h2>🏋️ 本月訓練</h2><p>每月可安排一次全隊訓練。訓練後會發生不同的球隊事件，選擇可能帶來成長、疲勞、意外收穫或能力下降。</p><div class="cards">'+[['打擊訓練','contact'],['長打訓練','power'],['跑壘訓練','speed'],['守備訓練','field'],['投手訓練','pitch'],['全隊體能','stamina']].map(([n,k])=>'<button '+(used?'disabled':'')+' onclick="train(\''+k+'\')">'+n+'<small style="display:block;color:#b7cbd9">'+(used?'本月已完成':'安排本月訓練')+'</small></button>').join('')+'</div><h3 style="margin-top:15px">月份管理</h3><button class="primary" onclick="advanceMonth()">前進下一個月 ▶</button><p class="muted">'+(used?'本月訓練已完成。':'尚未進行本月訓練。')+'</p></section><aside class="panel"><h2>📊 成長原則</h2><p>球員依資質與個人狀態成長；不同事件可能影響不同球員及能力。</p><p>事件包含臨時指導、裝備意外、隊內競爭、天氣變化、疲勞、球員突破與教練決策等。</p></aside></div>';
+}
+function train(type){
+ if(!G)return;
+ if(G.trainingUsed){alert('本月已訓練過，請下個月再安排。');return}
+ G.trainingUsed=true;
+ const before={};G.players.forEach(p=>before[p.id]={contact:p.contact,power:p.power,speed:p.speed,field:p.field,pitchSpeed:p.pitchSpeed,control:p.control,stamina:p.stamina,spirit:p.spirit,reputation:p.reputation});
+ const cap=p=>p.talent==='天才型'?p.cap:Math.min(p.cap||70,70);
+ G.players.forEach(p=>{
+  const n=Math.random()<.68?1:2;
+  if(['contact','power','speed','field'].includes(type))p[type]=Math.min(cap(p),p[type]+n);
+  else if(type==='pitch'&&p.pos==='投手'){p.pitchSpeed=Math.min(p.talent==='天才型'?160:140,(p.pitchSpeed||100)+n);p.control=Math.min(100,(p.control||35)+1)}
+  else if(type==='stamina'){if(p.pos==='投手')p.stamina=Math.min(100,(p.stamina||50)+n);else p.spirit=Math.min(100,(p.spirit||50)+1)}
+ });
+ G.pendingTrainingBefore=before;G.trainingBoost=Math.min(30,(G.trainingBoost||0)+1);
+ const pickPlayers=(n)=>G.players.slice().sort(()=>Math.random()-.5).slice(0,Math.min(n,G.players.length));
+ const events=[
+ {kind:'好消息',title:'退役學長突然回校',desc:'一位已畢業的學長帶著舊球具回來，願意留下來指導。',opts:[['一對一打擊指導','隨機三名球員打擊提升',()=>pickPlayers(3).forEach(p=>p.contact=Math.min(cap(p),p.contact+3))],['投手牛棚特訓','投手球速與控球改善，但體力消耗',()=>G.players.filter(p=>p.pos==='投手').forEach(p=>{p.pitchSpeed=Math.min(p.talent==='天才型'?160:140,(p.pitchSpeed||100)+2);p.control=Math.min(100,(p.control||35)+2);p.stamina=Math.max(1,(p.stamina||50)-4)})],['團隊分享會','全隊鬥志提高',()=>G.players.forEach(p=>p.spirit=Math.min(100,(p.spirit||50)+5))]]},
+ {kind:'壞消息',title:'器材室漏水',desc:'昨夜大雨滲進器材室，部分球具受潮，今天的訓練被迫調整。',opts:[['修復球具再訓練','花時間整理，隨機球員少量成長',()=>pickPlayers(4).forEach(p=>p.field=Math.min(cap(p),p.field+1))],['改做體能課','全隊體力恢復少許，但打擊練習中斷',()=>G.players.forEach(p=>{p.stamina=Math.min(100,(p.stamina||50)+4);p.contact=Math.max(1,p.contact-(Math.random()<.3?1:0))})],['讓球員自行處理','有人學會負責，也有人心情受影響',()=>G.players.forEach(p=>p.spirit=Math.max(1,Math.min(100,(p.spirit||50)+(Math.random()<.55?3:-3))))]]},
+ {kind:'混合',title:'一年級新生意外開竅',desc:'一名平時不起眼的新生，在訓練中展現驚人領悟力。教練要決定如何運用這股氣勢。',opts:[['讓新生接受特訓','隨機低年級球員能力大幅提升',()=>pickPlayers(2).forEach(p=>{p.contact=Math.min(cap(p),p.contact+2);p.speed=Math.min(cap(p),p.speed+2)})],['讓他帶動全隊','全隊鬥志提升，部分學長疲勞',()=>G.players.forEach(p=>{p.spirit=Math.min(100,(p.spirit||50)+3);if(p.year>=3)p.stamina=Math.max(1,(p.stamina||50)-3)} )],['先觀察不急著加練','投手恢復體力，其他人沒有額外成長',()=>G.players.filter(p=>p.pos==='投手').forEach(p=>p.stamina=Math.min(100,(p.stamina||50)+8))]]},
+ {kind:'意外',title:'校內分組賽爆冷門',desc:'替補球員在分組賽擊敗主力，隊內氣氛瞬間改變。',opts:[['提升競爭強度','隨機球員打擊與守備提升，部分鬥志下降',()=>pickPlayers(5).forEach(p=>{p.contact=Math.min(cap(p),p.contact+2);p.field=Math.min(cap(p),p.field+1);if(Math.random()<.3)p.spirit=Math.max(1,(p.spirit||50)-4)})],['鼓勵主力重新振作','主力鬥志提升，但替補感到失落',()=>G.players.forEach(p=>{if(p.year>=2)p.spirit=Math.min(100,(p.spirit||50)+5);else if(Math.random()<.5)p.spirit=Math.max(1,(p.spirit||50)-2)})],['安排恢復日','全隊體力回升，訓練成果沒有額外增加',()=>G.players.forEach(p=>p.stamina=Math.min(100,(p.stamina||50)+7))]]},
+ {kind:'壞消息',title:'主力球員訓練扭傷',desc:'一名主力在衝刺時不慎扭傷，球隊需要選擇後續安排。',opts:[['立即休息與復健','受影響球員體力回升，能力暫時沒有增加',()=>{const p=pickPlayers(1)[0];if(p){p.stamina=Math.min(100,(p.stamina||50)+12);p.spirit=Math.max(1,(p.spirit||50)-1)}}],['由替補接手課表','替補球員成長，主力鬥志可能下降',()=>{pickPlayers(3).forEach(p=>p.field=Math.min(cap(p),p.field+2));G.players.filter(p=>p.year>=2).forEach(p=>{if(Math.random()<.25)p.spirit=Math.max(1,(p.spirit||50)-2)})}],['全隊調整訓練量','全隊體力恢復，但隨機能力略降',()=>G.players.forEach(p=>{p.stamina=Math.min(100,(p.stamina||50)+5);if(Math.random()<.25)p.power=Math.max(1,p.power-1)})]]},
+ {kind:'好消息',title:'地方名教練來訪',desc:'附近球隊的教練來交流，提出不同訓練方向。',opts:[['打擊姿勢修正','隨機球員打擊提升',()=>pickPlayers(4).forEach(p=>p.contact=Math.min(cap(p),p.contact+2))],['內野守備腳步','隨機球員守備提升',()=>pickPlayers(5).forEach(p=>p.field=Math.min(cap(p),p.field+2))],['跑壘判斷課','隨機球員走力提升，全隊鬥志微升',()=>{pickPlayers(4).forEach(p=>p.speed=Math.min(cap(p),p.speed+2));G.players.forEach(p=>p.spirit=Math.min(100,(p.spirit||50)+1))}]]},
+ {kind:'混合',title:'校方臨時檢查場地',desc:'場地狀況不理想，教練必須臨時調整訓練計畫。',opts:[['改在室內做影片分析','全隊鬥志提升，部分球員打擊提升',()=>{G.players.forEach(p=>p.spirit=Math.min(100,(p.spirit||50)+2));pickPlayers(3).forEach(p=>p.contact=Math.min(cap(p),p.contact+1))}],['分組整理球場','守備提升但球員疲勞增加',()=>G.players.forEach(p=>{p.field=Math.min(cap(p),p.field+1);p.stamina=Math.max(1,(p.stamina||50)-3)} )],['縮短訓練提早休息','投手恢復較多體力，其他人鬥志略降',()=>G.players.forEach(p=>{if(p.pos==='投手')p.stamina=Math.min(100,(p.stamina||50)+10);else p.spirit=Math.max(1,(p.spirit||50)-1)})]]},
+ {kind:'突破',title:'球員突然找到手感',desc:'某位球員在反覆練習中找到適合自己的節奏。',opts:[['讓他分享心得','隨機球員打擊提升，鬥志提高',()=>{pickPlayers(3).forEach(p=>{p.contact=Math.min(cap(p),p.contact+2);p.spirit=Math.min(100,(p.spirit||50)+2)})}],['安排個人加練','隨機一名球員能力明顯成長但體力下降',()=>{const p=pickPlayers(1)[0];if(p){const k=pick(['contact','power','speed','field']);p[k]=Math.min(cap(p),p[k]+4);p.stamina=Math.max(1,(p.stamina||50)-8)}}],['趁手感安排練習賽','多名球員提升，但也有人因失誤而鬥志下降',()=>G.players.forEach(p=>{if(Math.random()<.5)p.contact=Math.min(cap(p),p.contact+1);if(Math.random()<.25)p.spirit=Math.max(1,(p.spirit||50)-2)} )]]}
+ ];
+ window._monthTrainingEvent=events[Math.floor(Math.random()*events.length)];
+ const e=window._monthTrainingEvent;
+ modal('<h2>🎲 訓練後事件：'+e.title+'</h2><p>'+e.desc+'</p><p class="muted">事件類型：'+e.kind+'。每次事件與選擇效果可能不同。</p><div class="grid">'+e.opts.map((o,i)=>'<section class="panel"><h3>'+o[0]+'</h3><p>'+o[1]+'</p><button class="primary" style="width:100%" onclick="finishTrainingEvent('+i+')">選擇此方案</button></section>').join('')+'</div>');
+ log('完成本月訓練，發生事件：'+e.title+'。');render();
+}
+/* 賽前陣容設定採獨立且明確的彈窗；賽程頁也放入直接開賽入口 */
+function startTournament(type){
+ const name={summer:'夏季地方大會',koshien:'夏季甲子園大賽',autumn:'秋季地方大會',regional:'秋季地區大會',spring:'春季選拔甲子園大賽'}[type]||'練習賽';
+ const strength=(type==='koshien'||type==='spring')?Math.max(60,G.rep*7+rand(25,43)+Math.floor((G.year-1)*1.8)):G.rep*7+rand(25,43)+Math.floor((G.year-1)*1.8);
+ let team=pick(['青森豪農','大阪桐蔭風格學園','京都鳳凰','橫濱明星','仙台青葉','名古屋龍星','沖繩海風','東京帝都']);
+ if((type==='koshien'||type==='spring')&&Math.random()<.24)team='傳奇魔王校・天翔學院';
+ const eligible=G.players.filter(p=>p.pos!=='投手'),pitchers=G.players.filter(p=>p.pos==='投手');
+ if(eligible.length<9||pitchers.length<1){modal('<h2>球員人數不足</h2><p>目前需要至少 1 名投手與 9 名非投手球員，才能安排正式先發陣容。</p><button class="primary" onclick="closeModal();showTab(\'roster\')">查看球員名單</button>');return}
+ const ours=G.players.reduce((a,p)=>a+calc(p),0)/Math.max(1,G.players.length);
+ currentMatch={type,name,team,strength,teamRep:Math.max(0,Math.min(4,Math.round((strength-25)/16))),ours,round:1,won:false,bases:[null,null,null],inning:1,half:'top',scoreUs:0,scoreThem:0,logs:[],active:'bat',paused:false,atbat:0,outs:0,balls:0,strikes:0,pitcher:null,batter:null,decision:null,usedIds:[],lineup:[],lineupIndex:0,awayLineup:[],lastResult:''};
+ lineupSetup();
+}
+function lineupSetup(){
+ const m=currentMatch,eligible=G.players.filter(p=>p.pos!=='投手'),pitchers=G.players.filter(p=>p.pos==='投手');
+ const lineup=eligible.slice().sort((a,b)=>calc(b)-calc(a)).slice(0,9).map(p=>p.id);
+ const selectedPitcher=pitchers.slice().sort((a,b)=>(b.pitchSpeed||0)-(a.pitchSpeed||0))[0]?.id;
+ const rows=Array.from({length:9},(_,i)=>'<div class="lineup-row"><b>'+ (i+1) +'棒</b><select id="lineup'+i+'">'+eligible.map(p=>'<option value="'+p.id+'" '+(lineup[i]===p.id?'selected':'')+'>'+p.name+'（'+p.pos+'）｜打擊 '+p.contact+'｜長打 '+p.power+'｜走力 '+p.speed+'｜守備 '+p.field+'</option>').join('')+'</select></div>').join('');
+ modal('<h2>📋 賽前先發陣容</h2><p>'+m.name+'　對手：'+m.team+'</p><p>請先選先發投手，再安排九名先發打者與棒次，按下確認後才會開始比賽。</p><div class="panel"><label>⚾ 先發投手</label><select id="starterPitcher" style="width:100%;margin-top:6px">'+pitchers.map(p=>'<option value="'+p.id+'" '+(p.id===selectedPitcher?'selected':'')+'>'+p.name+'｜球速 '+p.pitchSpeed+'｜控球 '+p.control+'｜體力 '+p.stamina+'%｜綜合 '+calc(p)+'</option>').join('')+'</select></div><h3 style="margin-top:12px">先發打序（每位球員不可重複）</h3><div id="lineupRows">'+rows+'</div><button class="primary" style="width:100%;margin-top:12px" onclick="confirmLineup()">確認先發，開始比賽</button><button style="width:100%;margin-top:7px" onclick="closeModal()">取消</button>');
+}
+function confirmLineup(){
+ const m=currentMatch,sp=$('starterPitcher'),eligible=G.players.filter(p=>p.pos!=='投手');
+ if(!sp){alert('請先選擇先發投手。');return}
+ const pitcher=G.players.find(p=>p.id===+sp.value);
+ const ids=Array.from({length:9},(_,i)=>+$('lineup'+i).value);
+ if(new Set(ids).size!==9){alert('先發九人不可重複，請調整棒次。');return}
+ m.pitcher=pitcher;m.lineup=ids;m.lineupIndex=0;m.batter=G.players.find(p=>p.id===ids[0])||eligible[0];m.usedIds=[...ids,pitcher.id];m.active='bat';m.half='top';m.inning=1;m.outs=0;m.bases=[null,null,null];m.logs.push('先發投手：'+pitcher.name+'；先發打序已確認。');matchScreen();
+}
+function scheduleHTML(){
+ return '<div class="grid"><section class="panel"><h2>📅 賽季日程</h2><p>點選比賽即可先安排先發投手、先發九人與棒次。</p>'+[[4,'春季練習賽','summer'],[7,'夏季地方大會','summer'],[8,'夏季甲子園大賽','koshien'],[9,'秋季地方大會','autumn'],[10,'秋季地區大會','regional'],[3,'春季選拔甲子園大賽','spring']].map(([mo,n,t])=>'<div class="between stat" style="margin:7px 0"><span>'+mo+'月　'+n+'</span><button class="primary" onclick="startTournament(\''+t+'\')">安排先發／開賽</button></div>').join('')+'<button onclick="advanceMonth()">前進下一個月 ▶</button></section><aside class="panel"><h2>🏆 賽季紀錄</h2><p>夏季地方大會：'+(G.events.summer||'尚未舉行')+'</p><p>秋季地方大會：'+(G.events.autumn||'尚未舉行')+'</p><p>春季選拔：'+(G.events.spring||'尚未舉行')+'</p><p>職棒指名：'+(G.events.draft||'尚未舉行')+'</p></aside></div>';
+}
+</script>
 </body></html>
