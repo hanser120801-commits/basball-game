@@ -1674,3 +1674,50 @@ function autoPlayMatch(){
  };
 })();
 </script>
+
+
+<script>
+/* 2026-10-26：修正投手跨場體力——上一場登板者不可在下一場直接滿體力 */
+(function(){
+ const priorSetup=lineupSetup;
+ const priorFinish=finishMatch;
+ lineupSetup=function(){
+  const Gref=G;
+  const lastUsed=Gref&&Gref.pitcherRestState&&Array.isArray(Gref.pitcherRestState.lastUsed)
+    ? Gref.pitcherRestState.lastUsed.slice() : [];
+  // 先執行原本名單初始化，再重新套用真正的休息規則，避免舊版重設覆蓋。
+  const result=priorSetup.apply(this,arguments);
+  if(Gref&&G===Gref){
+   Gref.pitcherRestState={lastUsed:lastUsed};
+   for(const p of Gref.players||[]){
+    if(p.pos!=='投手')continue;
+    if(p.staminaInitial==null)p.staminaInitial=Number.isFinite(p.stamina)?p.stamina:60;
+    if(lastUsed.includes(p.id)){
+     // 上一場有登板：保留耗損體力與投球數，不能下一場立刻滿血。
+     p.stamina=Math.max(0,Math.min(100,Number.isFinite(p.stamina)?p.stamina:0));
+     p.pitchCount=Math.max(0,Number(p.pitchCount)||0);
+    }else{
+     // 上一場未登板：休息一場後恢復到個人初始體力。
+     p.stamina=p.staminaInitial;
+     p.pitchCount=0;
+    }
+   }
+  }
+  return result;
+ };
+ finishMatch=function(){
+  const m=currentMatch;
+  const Gref=G;
+  const result=priorFinish.apply(this,arguments);
+  if(Gref&&m){
+   const used=new Set(m.usedPitcherIds||[]);
+   for(const p of Gref.players||[]){
+    if(p.pos==='投手'&&(Number(p.pitchCount)||0)>0)used.add(p.id);
+   }
+   if(m.pitcher&&m.pitcher.id&&(Number(m.pitcher.pitchCount)||0)>0)used.add(m.pitcher.id);
+   Gref.pitcherRestState={lastUsed:[...used]};
+  }
+  return result;
+ };
+})();
+</script>
