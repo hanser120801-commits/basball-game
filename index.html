@@ -586,17 +586,68 @@ function matchScreen(){
  };
 
  tactic = function(k){
-   const m=currentMatch;
    oldTactic(k);
-   if(!m || currentMatch!==m)return;
-   setTimeout(function(){
-     if(currentMatch!==m)return;
-     if(hasScoringPosition(m)){matchScreen();return;}
-     closeModal();
-     m.autoRunning=false;
-     autoPlayMatch();
-   },40);
- };
-})();
+ };})();
+</script>
+
+<script>
+/* 手動戰術結果放慢閱讀；依攻守切換球員面板；投手列出實際球種 */
+function getOpponentBatter(m){
+ if(!m.opponentBatter){
+  const strength=Number(m.strength)||50;
+  m.opponentBatter={name:(m.team||'對手')+'當前打者',contact:Math.max(35,Math.min(90,Math.round(42+strength*.35+(Math.random()*12-6)))),power:Math.max(30,Math.min(92,Math.round(38+strength*.42+(Math.random()*14-7)))),speed:Math.max(35,Math.min(85,Math.round(45+strength*.25+(Math.random()*12-6))))};
+ }
+ return m.opponentBatter;
+}
+function getPitchDisplay(p,opponent){
+ const pitches=(p&&Array.isArray(p.pitches))?p.pitches:[];
+ if(pitches.length) return pitches.map(x=>((x.name||'變化球')+' Lv.'+(x.level||1))).join('、');
+ if(opponent){
+  const all=['滑球','曲球','指叉球','變速球','伸卡球'];
+  const n=Math.max(1,Math.min(3,Number(p&&p.pitches)||2));
+  return all.slice(0,n).map((x,i)=>x+' Lv.'+(i===0?2:1)).join('、');
+ }
+ return '直球 Lv.1';
+}
+function continueAfterManual(){
+ const m=currentMatch;if(!m)return;
+ if(typeof closeModal==='function')closeModal();
+ if(m.inning>9){finishMatch();return;}
+ if(hasScoringPosition(m)){matchScreen();return;}
+ m.autoRunning=false;
+ setTimeout(()=>{if(currentMatch===m&&!hasScoringPosition(m))autoPlayMatch();else if(currentMatch===m)matchScreen();},120);
+}
+showPlayResult=function(title,detail){
+ const m=currentMatch;if(!m)return;
+ m.lastResult=title;m.logs.push(title+'：'+detail);
+ if(m.inning>9){finishMatch();return;}
+ modal(`<div class="panel" style="padding:18px;text-align:center">
+ <div style="font-size:38px;margin-bottom:8px">⚾</div><h2 style="font-size:26px;margin:8px 0 14px">${title}</h2>
+ <p style="font-size:18px;line-height:1.8;margin:12px 0">${detail}</p>
+ <div class="score" style="margin:16px 0">${G.school} ${m.scoreUs} : ${m.scoreThem} ${m.team}</div>
+ <p>第 ${m.inning} 局・${m.active==='bat'?'我方進攻':'我方防守'}・${m.outs} 出局</p>
+ <p>壘包：一壘 ${m.bases[0]?'有跑者':'空'}／二壘 ${m.bases[1]?'有跑者':'空'}／三壘 ${m.bases[2]?'有跑者':'空'}</p>
+ <button class="primary" style="width:100%;min-height:48px;font-size:17px;margin-top:12px" onclick="continueAfterManual()">看完結果，繼續比賽</button></div>`);
+};
+matchScreen=function(){
+ const m=currentMatch;if(!m)return;
+ const defense=m.active==='field';
+ const pitcher=m.pitcher||G.players.find(p=>p.pos==='投手');
+ const batter=defense?getOpponentBatter(m):(m.batter||G.players.find(p=>p.id===m.lineup?.[m.lineupIndex])||G.players.find(p=>p.pos!=='投手')||G.players[0]);
+ const op=typeof getOpponentPitcher==='function'?getOpponentPitcher(m):{name:(m.team||'對手')+'投手',pitchSpeed:120,control:50,stamina:60};
+ const critical=hasScoringPosition(m);
+ const pitches=getPitchDisplay(defense?pitcher:op,!defense);
+ const ownPitcherPitches=getPitchDisplay(pitcher,false);
+ modal(`<div class="between"><h2>⚾ ${m.name}</h2><button onclick="forfeitMatch()">離開比賽</button></div>
+ <div class="stat" style="text-align:center"><div>${G.school}　VS　${m.team}</div><div class="score">${m.scoreUs}　:　${m.scoreThem}</div><div>第 ${m.inning} 局・${defense?'我方防守':'我方進攻'}・${m.outs||0} 出局</div><div class="${critical?'gold':'muted'}">${critical?'⚠️ 得點圈有人：關鍵手動指揮':'自動比賽進行中'}</div></div>
+ <div class="matchgrid" style="margin-top:8px">
+ <div class="panel"><h3>${defense?'🧤 我方投手':'🏏 我方打者'}</h3>
+ ${defense?`<div><b>${pitcher?.name||'—'}</b><p>球速 ${pitcher?.pitchSpeed??'—'} km/h</p><p>控球 ${pitcher?.control??'—'}　體力 ${pitcher?.stamina??'—'}/100</p><p>投球數 ${pitcher?.pitchCount||0}</p><p><b>球種／變化球：</b>${ownPitcherPitches}</p></div>`:`<div><b>${batter?.name||'—'}</b><p>打擊 ${batter?.contact??'—'}　長打 ${batter?.power??'—'}</p><p>走力 ${batter?.speed??'—'}</p></div>`}</div>
+ <div class="panel"><h3>💎 壘包情報</h3><div class="diamond"><i class="base b1 ${m.bases[0]?'on':''}"></i><i class="base b2 ${m.bases[1]?'on':''}"></i><i class="base b3 ${m.bases[2]?'on':''}"></i><i class="base home"></i></div><div class="diamondlabels">一壘 ${m.bases[0]?'有跑者':'空'}<br>二壘 ${m.bases[1]?'有跑者':'空'}　 三壘 ${m.bases[2]?'有跑者':'空'}</div></div>
+ <div class="panel"><h3>${defense?'🏏 對方當前打者':'⚾ 對方投手'}</h3>
+ ${defense?`<b>${batter.name}</b><p>打擊 ${batter.contact}　長打 ${batter.power}</p><p>走力 ${batter.speed}</p>`:`<b>${op.name}</b><p>球速 ${op.pitchSpeed} km/h</p><p>控球 ${op.control}　體力 ${op.stamina}/100</p><p><b>球種／變化球：</b>${getPitchDisplay(op,true)}</p>`}</div></div>
+ ${critical?`<div class="panel" style="margin-top:8px"><h3>🎯 關鍵局面：教練指揮</h3><div class="tactics">${(!defense?[['強振大棒','power'],['確實擊球','contact'],['短打推進','bunt'],['盜壘','steal']]:[['全力投球','full'],['變化球誘敵','curve'],['敬遠（故意四壞）','walk'],['牽制壘包','pickoff']]).map(([n,k])=>`<button onclick="tactic('${k}')">${n}</button>`).join('')}</div></div>`:`<div class="panel" style="margin-top:8px"><p>一般打席將自動模擬，直到二壘或三壘出現跑者才暫停。</p></div>`}
+ <div class="panel" style="margin-top:8px"><h3>比賽紀錄</h3><div class="log">${(m.logs||[]).slice(-6).map(x=>`<div>${x}</div>`).join('')}</div></div>`);
+};
 </script>
 </body></html>
