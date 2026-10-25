@@ -519,11 +519,11 @@ function matchScreen(){
    const m=currentMatch;
    if(!m)return;
    oldMatchScreen();
-   if(!hasScoringPosition(m) && !m.finished && !m.autoRunning){
-     m.autoRunning=true;
+   if(!hasScoringPosition(m) && !m.finished && !m.autoRunning && !m.autoStartPending){
+     m.autoStartPending=true;
      setTimeout(function(){
-       if(currentMatch===m && !hasScoringPosition(m)) autoPlayMatch();
-       else if(currentMatch===m) m.autoRunning=false;
+       if(currentMatch===m && !hasScoringPosition(m)){m.autoStartPending=false;autoPlayMatch();}
+       else if(currentMatch===m){m.autoStartPending=false;}
      },80);
    }
  };
