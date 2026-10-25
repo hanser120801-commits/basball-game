@@ -1120,3 +1120,48 @@ finishBracketRound=function(m,win){
 })();
 </script>
 </body></html>
+<script>
+/* 賽後結算保底顯示＋日本高中棒球提前結束規則 */
+(function(){
+ const oldFinish=finishMatch, oldEndHalf=endHalfInning, oldApplyBat=applyBatterResult;
+ const esc=x=>String(x??'—').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+ function table(items,cols){return items.length?items.map(x=>'<tr><td>'+esc(x.name)+'</td>'+cols.map(f=>'<td>'+esc(f(x))+'</td>').join('')+'</tr>').join(''):'<tr><td colspan="'+(cols.length+1)+'">本場沒有可用紀錄</td></tr>'}
+ function show(m){
+  const z=m.box||{bat:{},pit:{},opp:{}},bat=Object.values(z.bat||{}),pit=Object.values(z.pit||{}),opp=Object.values(z.opp||{});
+  const val=x=>(x.h||0)*2+(x.hr||0)*3+(x.rbi||0)*2+(x.k||0)*.5+(x.outs||0)*.25-(x.er||0)*2;
+  const us=[...bat,...pit].sort((a,b)=>val(b)-val(a))[0],them=opp.slice().sort((a,b)=>val(b)-val(a))[0],mvp=us&&(!them||val(us)>=val(them))?us:them;
+  const cs=G.careerStats||{batting:{},pitching:{}},ps=G.players||[];
+  const bcareer=ps.map(p=>({name:p.name,...((cs.batting||{})[p.id]||{ab:0,h:0,hr:0})}));
+  const pcareer=ps.filter(p=>p.pos==='投手'||((cs.pitching||{})[p.id]||{}).outs>0).map(p=>({name:p.name,...((cs.pitching||{})[p.id]||{outs:0,er:0,k:0})}));
+  const row=(items,cols)=>table(items,cols);
+  const action=m.tournamentGame&&tournamentRun?(m.scoreUs>m.scoreThem?'<button class="primary" style="width:100%" onclick="closeModal();beginBracketRound()">查看籤表並進入下一輪 ▶</button>':'<button class="primary" style="width:100%" onclick="closeModal();tournamentRun=null;render()">返回賽季</button>'):'<button class="primary" style="width:100%" onclick="closeModal();render()">確認並返回賽季</button>';
+  modal('<style>.sumtbl{width:100%;border-collapse:collapse;font-size:12px;margin:8px 0}.sumtbl td,.sumtbl th{border:1px solid #8886;padding:5px;text-align:center;white-space:nowrap}.sumtbl th{background:#56735a;color:white}</style><div class="ceremony" style="text-align:left;max-height:82vh;overflow:auto"><h2 style="text-align:center">⚾ 賽後球員表現總結</h2><div class="stat" style="text-align:center"><h2>'+esc(G.school)+' '+esc(m.scoreUs)+'：'+esc(m.scoreThem)+' '+esc(m.team)+'</h2><p>'+esc(m.name)+'｜'+(m.scoreUs>m.scoreThem?'我方獲勝':m.scoreUs<m.scoreThem?'我方落敗':'平手')+'</p><p>'+esc(m.endReason||'比賽結束')+'</p></div><div class="stat"><h3>🏅 本場 MVP：'+esc(mvp?.name||'尚無足夠紀錄')+'</h3><p>所屬球隊：'+esc(mvp?(mvp===them?(m.team||'對方球隊'):G.school):'—')+'</p></div><h3>⚾ 我方打者（打數／安打／全壘打／保送／三振／打點）</h3><div style="overflow-x:auto"><table class="sumtbl"><tr><th>球員</th><th>打數</th><th>安打</th><th>HR</th><th>保送</th><th>三振</th><th>打點</th></tr>'+row(bat,[x=>x.ab||0,x=>x.h||0,x=>x.hr||0,x=>x.bb||0,x=>x.k||0,x=>x.rbi||0])+'</table></div><h3>🧤 我方投手（局數／被安打／責失／三振／保送／ERA）</h3><div style="overflow-x:auto"><table class="sumtbl"><tr><th>投手</th><th>局數</th><th>被安打</th><th>責失</th><th>三振</th><th>保送</th><th>ERA</th></tr>'+row(pit,[x=>Math.floor((x.outs||0)/3)+'.'+((x.outs||0)%3),x=>x.h||0,x=>x.er||0,x=>x.k||0,x=>x.bb||0,x=>x.outs?((x.er||0)*27/x.outs).toFixed(2):'0.00'])+'</table></div><h3>🆚 對方打者</h3><div style="overflow-x:auto"><table class="sumtbl"><tr><th>球員</th><th>打數</th><th>安打</th><th>HR</th><th>保送</th><th>三振</th><th>打點</th></tr>'+row(opp,[x=>x.ab||0,x=>x.h||0,x=>x.hr||0,x=>x.bb||0,x=>x.k||0,x=>x.rbi||0])+'</table></div><h3>📈 累積打擊 AVG</h3><div style="overflow-x:auto"><table class="sumtbl"><tr><th>球員</th><th>打數</th><th>安打</th><th>AVG</th><th>HR</th></tr>'+row(bcareer,[x=>x.ab||0,x=>x.h||0,x=>x.ab?(x.h/x.ab).toFixed(3).replace(/^0/,''):'.000',x=>x.hr||0])+'</table></div><h3>📉 累積投手 ERA</h3><div style="overflow-x:auto"><table class="sumtbl"><tr><th>投手</th><th>局數</th><th>責失</th><th>三振</th><th>ERA</th></tr>'+row(pcareer,[x=>Math.floor((x.outs||0)/3)+'.'+((x.outs||0)%3),x=>x.er||0,x=>x.k||0,x=>x.outs?((x.er||0)*27/x.outs).toFixed(2):'0.00'])+'</table></div>'+action+'</div>');
+ }
+ finishMatch=function(){
+  const m=currentMatch;if(!m||m._finishing)return;
+  m._finishing=true;
+  if(m.scoreUs===m.scoreThem){m.endReason=m.endReason||'延長賽模擬決勝';m.scoreUs++}
+  try{oldFinish.apply(this,arguments)}catch(e){console.error(e)}
+  show(m);
+ };
+ endHalfInning=function(){
+  const m=currentMatch;if(!m)return;
+  oldEndHalf.apply(this,arguments);
+  if(currentMatch!==m)return;
+  if(m.inning>9){m.endReason='九局結束';finishMatch();return}
+  if(m.inning===9&&m.active==='field'&&m.scoreUs>m.scoreThem){m.endReason='九局下半免打：我方已領先';finishMatch();return}
+  // 甲子園與賽事決賽不採用地方賽コールド規則
+  const tournament=!!m.tournamentGame, final=/決賽|決勝/.test(m.name||'');
+  if(!tournament&&!final){
+   const d=Math.abs((m.scoreUs||0)-(m.scoreThem||0));
+   if(m.inning>=5&&d>=10){m.endReason='提前結束：五局後分差達 10 分（地方賽コールドゲーム）';finishMatch();return}
+   if(m.inning>=7&&d>=7){m.endReason='提前結束：七局後分差達 7 分（地方賽コールドゲーム）';finishMatch();return}
+  }
+ };
+ applyBatterResult=function(){
+  const m=currentMatch,r=oldApplyBat.apply(this,arguments);
+  if(m&&currentMatch===m&&m.inning>=9&&m.active==='bat'&&m.scoreUs>m.scoreThem){m.endReason='再見分：九局下半取得領先';finishMatch()}
+  return r;
+ };
+})();
+</script>
