@@ -1129,7 +1129,7 @@ finishBracketRound=function(m,win){
  function show(m){
   const z=m.box||{bat:{},pit:{},opp:{}},bat=Object.values(z.bat||{}),pit=Object.values(z.pit||{}),opp=Object.values(z.opp||{});
   const val=x=>(x.h||0)*2+(x.hr||0)*3+(x.rbi||0)*2+(x.k||0)*.5+(x.outs||0)*.25-(x.er||0)*2;
-  const us=[...bat,...pit].sort((a,b)=>val(b)-val(a))[0],them=opp.slice().sort((a,b)=>val(b)-val(a))[0],mvp=us&&(!them||val(us)>=val(them))?us:them;
+  const us=[...bat,...pit].sort((a,b)=>val(b)-val(a))[0],them=opp.slice().sort((a,b)=>val(b)-val(a))[0],mvp=m.scoreUs<m.scoreThem?them:(m.scoreUs>m.scoreThem?(us||them):(us&&(!them||val(us)>=val(them))?us:them));
   const cs=G.careerStats||{batting:{},pitching:{}},ps=G.players||[];
   const bcareer=ps.map(p=>({name:p.name,...((cs.batting||{})[p.id]||{ab:0,h:0,hr:0})}));
   const pcareer=ps.filter(p=>p.pos==='投手'||((cs.pitching||{})[p.id]||{}).outs>0).map(p=>({name:p.name,...((cs.pitching||{})[p.id]||{outs:0,er:0,k:0})}));
