@@ -949,4 +949,24 @@ finishBracketRound=function(m,win){
  modal('<div class="ceremony" style="text-align:left"><h2 style="text-align:center">'+(win?'🎉 晉級成功！':'比賽結束')+'</h2><div class="stat"><p>本場結果：'+(win?'我方獲勝，晉級下一輪':'我方落敗，遭淘汰')+'</p><p>賽事進度：'+t.round+' / '+(t.real49?6:Math.log2(t.entrants.length))+' 輪</p></div>'+bracketMarkup()+(win?'<button class="primary" style="width:100%" onclick="beginBracketRound()">下一輪：'+bracketRoundName(t.entrants.length,t.round+1)+' ▶</button>':'<button class="primary" style="width:100%" onclick="closeModal();tournamentRun=null;render()">返回賽季</button>')+'</div>');
 };
 </script>
+
+
+<script>
+/* 賽後結算與累積統計（覆蓋上一版結算顯示流程） */
+(function(){
+  const _finishWithStats=finishMatch;
+  // 結算按鈕依賽事狀態接回正確流程，避免蓋掉晉級畫面後無法進下一輪
+  const _renderBoxPrevious=renderBox;
+  renderBox=function(m){
+    let html=_renderBoxPrevious(m);
+    const btn=m.tournamentGame&&tournamentRun
+      ? (m.scoreUs>m.scoreThem
+          ? '<button class="primary" style="width:100%" onclick="closeModal();beginBracketRound()">查看籤表並進入下一輪 ▶</button>'
+          : '<button class="primary" style="width:100%" onclick="closeModal();tournamentRun=null;render()">確認結算，返回賽季</button>')
+      : '<button class="primary" style="width:100%" onclick="closeModal();render()">確認並返回賽季</button>';
+    html=html.replace(/<button class="primary" style="width:100%" onclick="closeModal\(\);render\(\)">確認並返回賽季<\/button>/,btn);
+    return html;
+  };
+})();
+</script>
 </body></html>
