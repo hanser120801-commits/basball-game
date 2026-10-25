@@ -379,4 +379,38 @@ function applyOpponentResult(result){
 }
 </script>
 
+
+<script>
+/* 2026-10-25 realism patch: opponent pitcher ratings should be plausible and stable */
+function getOpponentPitcher(m){
+ if(!m.opponentPitcher){
+  const strength=Number(m.strength)||50;
+  const rep=Number(m.teamRep)||0;
+  const baseSpeed=118+Math.max(0,Math.min(35,(strength-25)*0.72))+rep*1.5;
+  m.opponentPitcher={
+   name:(m.team||'對手')+'先發投手',
+   pitchSpeed:Math.max(118,Math.min(157,Math.round(baseSpeed+(Math.random()*6-3)))),
+   control:Math.max(35,Math.min(88,Math.round(39+strength*.36+rep*2+(Math.random()*8-4)))),
+   stamina:Math.max(45,Math.min(95,Math.round(58+strength*.28+rep*3))),
+   pitches:Math.max(1,Math.min(5,1+Math.floor(strength/28)))
+  };
+ }
+ return m.opponentPitcher;
+}
+function matchScreen(){
+ const m=currentMatch;if(!m)return;
+ const pitcher=m.pitcher||G.players.find(p=>p.pos==='投手'),batter=m.batter||G.players.find(p=>p.pos!=='投手')||G.players[0];
+ const op=getOpponentPitcher(m);
+ modal(`<div class="between"><h2>⚾ ${m.name}</h2><button onclick="forfeitMatch()">離開比賽</button></div>
+ <div class="stat" style="text-align:center"><div>${G.school}　VS　${m.team}</div><div class="score">${m.scoreUs}　:　${m.scoreThem}</div><div>第 ${m.inning} 局・${m.active==='bat'?'我方進攻':'我方防守'}　｜　對手強度 ${Math.round(m.strength)}</div></div>
+ <div class="matchgrid" style="margin-top:8px">
+ <div class="panel"><h3>我方打者</h3><div class="player"><canvas id="matchBatter" width="48" height="56"></canvas><div>${batter?.name||'—'}<br>打擊 ${batter?.contact??'—'}<br>長打 ${batter?.power??'—'}<br>走力 ${batter?.speed??'—'}</div></div></div>
+ <div class="panel"><h3>壘包情報</h3><div class="diamond" id="diamond"><i class="base b1 ${m.bases[0]?'on':''}"></i><i class="base b2 ${m.bases[1]?'on':''}"></i><i class="base b3 ${m.bases[2]?'on':''}"></i><i class="base home"></i></div><div class="diamondlabels">一壘 ${m.bases[0]?'有跑者':'空'}<br>二壘 ${m.bases[1]?'有跑者':'空'}　 三壘 ${m.bases[2]?'有跑者':'空'}</div></div>
+ <div class="panel"><h3>對方投手</h3><div class="player"><canvas id="matchPitcher" width="48" height="56"></canvas><div>${op.name}<br>球速 ${op.pitchSpeed} km/h<br>控球 ${op.control}<br>體力 ${op.stamina}/100<br>主要球種 ${op.pitches} 種</div></div><small class="muted">依對手強度與聲譽生成，整場比賽數據固定。</small></div></div>
+ <div class="panel" style="margin-top:8px"><div class="between"><b>${m.active==='bat'?'🎯 進攻指揮':'🧤 防守指揮'}</b><span class="gold">我方投手：${pitcher?.name||'—'}　投球數 ${pitcher?.pitchCount||0}　體力 ${pitcher?.stamina||0}/100</span></div>
+ <div class="tactics" style="margin-top:8px">${(m.active==='bat'?[['強振大棒','power'],['確實擊球','contact'],['短打推進','bunt'],['盜壘','steal']]:[['全力投球','full'],['變化球誘敵','curve'],['敬遠（故意四壞）','walk'],['牽制壘包','pickoff']]).map(([n,k])=>`<button onclick="tactic('${k}')">${n}</button>`).join('')}</div>
+ <div id="matchLog" class="log" style="margin-top:8px">${(m.logs||[]).slice(-5).map(x=>`<div>${x}</div>`).join('')}</div><p class="muted">對方投手球速會依實力落在合理高中棒球範圍；強校王牌可能更快。第6局後低體力會觸發換投警告。</p></div>`);
+ if(typeof drawFace==='function'){if(batter)drawFace('matchBatter',batter);drawFace('matchPitcher',pitcher||batter);}
+}
+</script>
 </body></html>
