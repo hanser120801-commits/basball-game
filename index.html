@@ -1633,3 +1633,44 @@ function autoPlayMatch(){
  };
 })();
 </script>
+
+
+<script>
+/* 2026-10-26：自動比賽卡住修復 v2——明確顯示進度、每球更新畫面、失敗時提供重試 */
+(function(){
+ const oldScreen=matchScreen;
+ matchScreen=function(){
+  oldScreen.apply(this,arguments);
+  const m=currentMatch;if(!m)return;
+  const host=document.querySelector('#modalRoot .modal');if(!host)return;
+  const status=[...host.querySelectorAll('.stat div')].find(el=>(el.textContent||'').includes('自動比賽進行中')||(el.textContent||'').includes('關鍵手動指揮'));
+  if(status){
+   if(hasScoringPosition(m))status.textContent='⚠️ 得點圈有人：請選擇戰術後繼續';
+   else if(m.autoRunning)status.textContent='⏳ 自動比賽進行中（第 '+m.inning+' 局／'+(m.logs||[]).length+' 則戰況）';
+   else status.innerHTML='⏸️ 比賽暫停：<button class="primary" style="margin:4px" onclick="resumeAutoMatch()">▶ 繼續比賽</button>';
+  }
+  const logHost=[...host.querySelectorAll('.panel')].find(el=>(el.querySelector('h3')?.textContent||'').includes('比賽紀錄'));
+  if(logHost){
+   const logs=(m.logs||[]).slice(-3);
+   let box=logHost.querySelector('.live-auto-log');
+   if(!box){box=document.createElement('div');box.className='live-auto-log';box.style.cssText='font-size:12px;line-height:1.5;margin-top:8px;';logHost.appendChild(box);}
+   box.textContent=logs.join(' ');
+  }
+ };
+ window.resumeAutoMatch=function(){
+  const m=currentMatch;if(!m)return;
+  m.autoRunning=false;m.autoStartPending=false;
+  autoPlayMatch();
+ };
+ const priorAuto=autoPlayMatch;
+ autoPlayMatch=function(){
+  const m=currentMatch;if(!m)return;
+  if(m.autoRunning)return;
+  if(!Array.isArray(m.bases))m.bases=[null,null,null];
+  if(typeof m.outs!=='number')m.outs=0;
+  if(typeof m.inning!=='number'||m.inning<1)m.inning=1;
+  if(m.active!=='bat'&&m.active!=='field')m.active='bat';
+  priorAuto();
+ };
+})();
+</script>
