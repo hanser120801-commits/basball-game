@@ -1608,3 +1608,28 @@ function autoPlayMatch(){
  };
 })();
 </script>
+
+
+<script>
+/* 2026-10-26：換人選項只在關鍵局面進入手動指揮時顯示 */
+(function(){
+ const previousMatchScreen=matchScreen;
+ matchScreen=function(){
+  previousMatchScreen.apply(this,arguments);
+  const m=currentMatch;if(!m)return;
+  const host=document.querySelector('#modalRoot .modal');if(!host)return;
+  const panels=[...host.querySelectorAll('.panel')];
+  const subPanel=panels.find(el=>(el.querySelector('h3')?.textContent||'').includes('比賽換人'));
+  if(!subPanel)return;
+  // 只有得點圈出現跑者、比賽因此進入手動指揮時才顯示換人。
+  const manualKeyMoment=typeof hasScoringPosition==='function'&&hasScoringPosition(m);
+  if(!manualKeyMoment){subPanel.remove();return;}
+  // 進攻時可代打／代跑；守備時才可換投。沒有壘上跑者不顯示代跑。
+  subPanel.innerHTML='<h3>🔄 關鍵局面換人</h3>'+
+   (m.active==='bat'
+    ? '<button style="width:100%;margin:4px 0" onclick="chooseBatterSub()">🔁 更換代打（比較能力）</button>'+
+      (m.bases.some(Boolean)?'<button style="width:100%;margin:4px 0" onclick="chooseRunnerSub()">🏃 壘上更換代跑</button>':'')
+    : '<button style="width:100%;margin:4px 0" onclick="choosePitcherSub()">⚾ 更換投手（比較能力）</button>');
+ };
+})();
+</script>
