@@ -1721,3 +1721,28 @@ function autoPlayMatch(){
  };
 })();
 </script>
+
+
+<script>
+/* 2026-10-26：依照教練規則，所有投手每場開始都恢復初始體力與投球數 */
+(function(){
+ const previousSetup=lineupSetup;
+ lineupSetup=function(){
+  const result=previousSetup.apply(this,arguments);
+  if(G){
+   for(const p of G.players||[]){
+    if(p.pos!=='投手')continue;
+    if(p.staminaInitial==null){
+     const current=Number(p.stamina);
+     p.staminaInitial=Number.isFinite(current)?current:60;
+    }
+    p.stamina=p.staminaInitial;
+    p.pitchCount=0;
+   }
+   // 不再用上一場登板名單限制下一場可用投手。
+   G.pitcherRestState={lastUsed:[]};
+  }
+  return result;
+ };
+})();
+</script>
