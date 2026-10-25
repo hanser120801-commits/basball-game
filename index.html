@@ -1373,3 +1373,91 @@ function autoPlayMatch(){
  matchScreen();
 }
 </script>
+
+
+<script>
+/* 2026-10-26：低體力只削弱該投手的本場投球表現；手動比賽加入代打、代跑、換投及替補能力比較 */
+(function(){
+ const oldMatchScreen=matchScreen;
+ const escSub=s=>String(s??'—').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+ function chooseWeighted(entries){
+  const total=entries.reduce((n,x)=>n+x[1],0);let r=Math.random()*total;
+  for(const [name,w] of entries){r-=w;if(r<0)return name}return entries[entries.length-1][0];
+ }
+ tactic=function(k){
+  const m=currentMatch;if(!m)return;const p=m.pitcher,b=m.batter;
+  if(m.active==='bat'){
+   if(k==='steal'){
+    const idx=m.bases.findLastIndex(Boolean);if(idx<0){showPlayResult('無法盜壘','壘上無人。');return}
+    const runner=m.bases[idx];
+    if(Math.random()<(runner.speed||50)/125){m.bases[idx]=null;if(idx===2)m.scoreUs++;else m.bases[idx+1]=runner;showPlayResult('盜壘成功',(runner.name||'跑者')+' 依走力 '+runner.speed+' 成功推進。')}
+    else{m.bases[idx]=null;m.outs++;if(m.outs>=3)endHalfInning();showPlayResult('盜壘阻殺',(runner.name||'跑者')+' 遭阻殺出局。')}return
+   }
+   if(k==='bunt'){m.bases.forEach((r,i)=>{if(r){if(i===2)m.scoreUs++;else if(!m.bases[i+1]){m.bases[i+1]=r;m.bases[i]=null}}});m.outs++;if(m.outs>=3)endHalfInning();else moveBatterIndex();showPlayResult('短打推進','跑者推進，打者犧牲觸擊出局。');return}
+   const chance=clamp(((b?.contact||45)+(k==='power'?(b?.power||45)*.45:8)-(m.strength*.35))/100,.12,.8);
+   const result=chooseWeighted([['全壘打',chance*.045],['三壘安打',chance*.055],['二壘安打',chance*.14],['一壘安打',chance*.32],['失誤上壘',chance*.09],['雙殺',chance*.08],['三振',(1-chance)*.5],['接殺出局',(1-chance)*.5]]);
+   applyBatterResult(result,b);showPlayResult(result,resultText(result,b));return
+  }
+  if(k==='walk'){applyOpponentResult('保送');showPlayResult('對方打者保送','對方打者上壘。');return}
+  if(k==='pickoff'){const idx=m.bases.findIndex(Boolean);if(idx>=0&&Math.random()<.45){const runner=m.bases[idx];m.bases[idx]=null;m.outs++;if(m.outs>=3)endHalfInning();showPlayResult('牽制出局',(runner.name||'跑者')+' 遭牽制出局。')}else showPlayResult('牽制未果','未能抓到壘上跑者。');return}
+  if(p){p.pitchCount=(p.pitchCount||0)+3+Math.floor(Math.random()*3);p.stamina=clamp((p.stamina??60)-(k==='full'?1.2:.8),0,100)}
+  const fatigue=!!p&&(p.stamina??100)<10;
+  const result=chooseWeighted([
+   ['三振',fatigue?7:14],['保送',fatigue?18:9],['全壘打',fatigue?17:5],
+   ['三壘安打',fatigue?10:3],['二壘安打',fatigue?17:9],
+   ['一壘安打',fatigue?25:22],['失誤',fatigue?4:8],['接殺出局',fatigue?2:30]
+  ]);
+  applyOpponentResult(result);
+  showPlayResult(result,'對方打者結果：'+result+(fatigue?'。'+p.name+' 體力低於10%，該投手本場壓制力大幅下降，對方更容易打出安打與長打。':''));
+ };
+ choosePitcherSub=function(){
+  const m=currentMatch,current=m?.pitcher;if(!m||!current)return;
+  const opts=G.players.filter(p=>p.pos==='投手'&&p.id!==current.id);
+  modal('<h2>🔁 更換投手</h2><p>目前投手：'+escSub(current.name)+'｜球速 '+(current.pitchSpeed??'—')+'｜控球 '+(current.control??'—')+'｜體力 '+Math.round(current.stamina??0)+'%｜投球數 '+(current.pitchCount||0)+'</p><p>比較替補投手能力後再選擇：</p>'+
+   (opts.map(p=>'<div class="stat"><b>'+escSub(p.name)+'｜'+escSub(p.year||'')+'年級</b><p>綜合 '+calc(p)+'｜球速 '+(p.pitchSpeed??'—')+'｜控球 '+(p.control??'—')+'｜體力 '+Math.round(p.stamina??0)+'%｜投球數 '+(p.pitchCount||0)+'</p><button class="primary" style="width:100%" onclick="subPitcher('+p.id+')">讓 '+escSub(p.name)+' 登板</button></div>').join('')||'<p>沒有可用的替補投手。</p>')+'<button style="width:100%;margin-top:8px" onclick="matchScreen()">返回比賽</button>');
+ };
+ subPitcher=function(id){
+  const m=currentMatch,p=G.players.find(x=>x.id===id);if(!m||!p||p.pos!=='投手'||p.id===m.pitcher?.id)return;
+  m.usedPitcherIds ||= [];if(m.pitcher?.id&&!m.usedPitcherIds.includes(m.pitcher.id))m.usedPitcherIds.push(m.pitcher.id);
+  m.pitcher=p;m.usedIds ||= [];if(!m.usedIds.includes(id))m.usedIds.push(id);
+  m.pitchWarningShown=false;m.logs.push('更換投手：'+p.name+' 登板（球速 '+p.pitchSpeed+'、控球 '+p.control+'、體力 '+Math.round(p.stamina??0)+'%）。');matchScreen();
+ };
+ chooseBatterSub=function(){
+  const m=currentMatch;if(!m)return;
+  const opts=G.players.filter(p=>p.pos!=='投手'&&!(m.usedIds||[]).includes(p.id));
+  modal('<h2>🔁 代打選擇</h2><p>比較替補球員的打擊、長打、走力與守備能力，再選擇代打。</p>'+
+   (opts.map(p=>'<div class="stat"><b>'+escSub(p.name)+'｜'+escSub(p.pos)+'｜'+escSub(p.year||'')+'年級</b><p>綜合 '+calc(p)+'｜打擊 '+p.contact+'｜長打 '+p.power+'｜走力 '+p.speed+'｜守備 '+p.field+'</p><button class="primary" style="width:100%" onclick="subBatter('+p.id+')">由 '+escSub(p.name)+' 代打</button></div>').join('')||'<p>沒有可用的替補打者。</p>')+'<button style="width:100%;margin-top:8px" onclick="matchScreen()">返回比賽</button>');
+ };
+ subBatter=function(id){
+  const m=currentMatch,p=G.players.find(x=>x.id===id);if(!m||!p||p.pos==='投手'||(m.usedIds||[]).includes(id))return;
+  const old=m.batter||G.players.find(x=>x.id===m.lineup?.[m.lineupIndex]);
+  m.usedIds ||= [];if(old?.id&&!m.usedIds.includes(old.id))m.usedIds.push(old.id);
+  m.batter=p;if(m.lineup?.length)m.lineup[m.lineupIndex]=p.id;
+  if(!m.usedIds.includes(id))m.usedIds.push(id);
+  m.logs.push('代打：'+p.name+'（打擊 '+p.contact+'、長打 '+p.power+'）上場。');matchScreen();
+ };
+ chooseRunnerSub=function(){
+  const m=currentMatch;if(!m)return;const occupied=m.bases.map((r,i)=>r?i:-1).filter(i=>i>=0);
+  if(!occupied.length){modal('<h2>🏃 代跑</h2><p>目前壘上沒有跑者。</p><button onclick="matchScreen()">返回比賽</button>');return}
+  const opts=G.players.filter(p=>p.pos!=='投手'&&!(m.usedIds||[]).includes(p.id));
+  modal('<h2>🏃 壘上更換代跑</h2><p>選擇要替換的壘包，再比較替補球員走力。</p>'+
+   occupied.map(idx=>'<div class="stat"><b>'+['一','二','三'][idx]+'壘跑者：'+escSub(m.bases[idx].name)+'｜走力 '+(m.bases[idx].speed??'—')+'</b>'+
+    (opts.map(p=>'<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #8884"><span>'+escSub(p.name)+'｜走力 '+p.speed+'｜打擊 '+p.contact+'｜守備 '+p.field+'</span><button class="primary" onclick="subRunner('+idx+','+p.id+')">換上</button></div>').join('')||'<p>沒有可用的替補跑者。</p>')+'</div>').join('')+'<button style="width:100%;margin-top:8px" onclick="matchScreen()">返回比賽</button>');
+ };
+ subRunner=function(idx,id){
+  const m=currentMatch,p=G.players.find(x=>x.id===id);if(!m||!p||p.pos==='投手'||!m.bases[idx]||(m.usedIds||[]).includes(id))return;
+  const old=m.bases[idx];m.usedIds ||= [];if(old?.id&&!m.usedIds.includes(old.id))m.usedIds.push(old.id);
+  m.bases[idx]=p;if(!m.usedIds.includes(id))m.usedIds.push(id);
+  m.logs.push('代跑：'+p.name+'（走力 '+p.speed+'）替換'+['一','二','三'][idx]+'壘跑者。');matchScreen();
+ };
+ matchScreen=function(){
+  const m=currentMatch;if(!m)return;
+  oldMatchScreen.apply(this,arguments);
+  const host=document.querySelector('#modalRoot .modal');if(!host)return;
+  const actions=document.createElement('div');actions.className='panel';actions.style.marginTop='8px';
+  actions.innerHTML='<h3>🔄 比賽換人</h3>'+
+   (m.active==='bat'?'<button style="width:100%;margin:4px 0" onclick="chooseBatterSub()">🔁 更換代打（比較能力）</button>'+(m.bases.some(Boolean)?'<button style="width:100%;margin:4px 0" onclick="chooseRunnerSub()">🏃 壘上更換代跑</button>':''):'<button style="width:100%;margin:4px 0" onclick="choosePitcherSub()">⚾ 更換投手（比較能力）</button>');
+  host.appendChild(actions);
+ };
+})();
+</script>
