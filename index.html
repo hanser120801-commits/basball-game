@@ -1298,3 +1298,78 @@ finishBracketRound=function(m,win){
  };
 })();
 </script>
+
+
+<script>
+/* 修正投手疲勞效果：只影響我方守備投球，不影響我方進攻打者 */
+function tactic(k){
+ const m=currentMatch;if(!m)return;const p=m.pitcher,b=m.batter;
+ if(m.active==='bat'){
+  if(k==='steal'){
+   const idx=m.bases.findLastIndex(Boolean);if(idx<0){showPlayResult('無法盜壘','壘上無人。');return}
+   const runner=m.bases[idx];if(Math.random()<(runner.speed||50)/125){m.bases[idx]=null;if(idx===2)m.scoreUs++;else m.bases[idx+1]=runner;showPlayResult('盜壘成功',(runner.name||'跑者')+' 依走力 '+runner.speed+' 成功推進。')}
+   else{m.bases[idx]=null;m.outs++;if(m.outs>=3)endHalfInning();showPlayResult('盜壘阻殺',(runner.name||'跑者')+' 遭阻殺出局。')}return
+  }
+  if(k==='bunt'){m.bases.forEach((r,i)=>{if(r){if(i===2)m.scoreUs++;else if(!m.bases[i+1]){m.bases[i+1]=r;m.bases[i]=null}}});m.outs++;if(m.outs>=3)endHalfInning();else moveBatterIndex();m.lastResult='短打推進';showPlayResult('短打推進','跑者推進，打者犧牲觸擊出局。');return}
+  // 我方進攻成功率只看打者與對方投手，不受我方投手疲勞影響。
+  const chance=clamp(((b?.contact||45)+(k==='power'?(b?.power||45)*.45:8)-(m.strength*.35))/100,.12,.8);
+  const r=Math.random();let result;
+  if(r<chance*.045)result='全壘打';else if(r<chance*.10)result='三壘安打';else if(r<chance*.24)result='二壘安打';else if(r<chance*.56)result='一壘安打';else if(r<chance*.65)result='失誤上壘';else if(r<chance*.73)result='雙殺';else result=Math.random()<.5?'三振':'接殺出局';
+  applyBatterResult(result,b);m.lastResult=result;showPlayResult(result,resultText(result,b));return
+ }
+ if(k==='walk'){applyOpponentResult('保送');m.lastResult='對方打者保送';showPlayResult('對方打者保送','對方打者上壘。');return}
+ if(k==='pickoff'){const idx=m.bases.findIndex(Boolean);if(idx>=0&&Math.random()<.45){const r=m.bases[idx];m.bases[idx]=null;m.outs++;if(m.outs>=3)endHalfInning();showPlayResult('牽制出局',(r.name||'跑者')+' 遭牽制出局。')}else showPlayResult('牽制未果','未能抓到壘上跑者。');return}
+ if(p){
+  const before=p.pitchCount||0, staminaBefore=Number.isFinite(p.stamina)?p.stamina:60;
+  p.pitchCount=before+3+Math.floor(Math.random()*3);
+  p.stamina=clamp(staminaBefore-(k==='full'?1.2:0.8),0,100);
+ }
+ // 投手體力低時，只增加對方打者的攻擊成功率與長打風險。
+ const fatigue=p&&p.stamina<10?1:0;
+ const base=clamp(((m.strength-(p?.control||50)+(k==='curve'?-10:4))/100),.08,.7);
+ const r=Math.random();let result;
+ if(r<.1)result='三振';
+ else if(r<.2)result='保送';
+ else if(r<.32+fatigue*.10)result='全壘打';
+ else if(r<.48+fatigue*.10)result='三壘安打';
+ else if(r<.64+fatigue*.08)result='二壘安打';
+ else if(r<base+fatigue*.08)result='一壘安打';
+ else if(r<.9)result='失誤';
+ else result='接殺出局';
+ applyOpponentResult(result);m.lastResult='對方：'+result;showPlayResult(result,'對方打者結果：'+result+(p?.stamina<10?'。我方投手體力過低，對方攻擊威脅上升。':''));
+}
+function autoPlayMatch(){
+ const m=currentMatch;if(!m)return;let plays=0;
+ while(currentMatch===m&&plays++<160&&m.inning<=9){
+  if(hasScoringPosition(m)){m.logs.push('⚠️ 得點圈有人！進入關鍵手動指揮。');matchScreen();return}
+  if(m.outs>=3){endHalfInning();if(currentMatch!==m)return;continue}
+  if(m.active==='bat'){
+   const b=m.batter||G.players.find(p=>p.id===m.lineup?.[m.lineupIndex])||G.players.find(p=>p.pos!=='投手')||G.players[0];
+   const chance=clamp(((b?.contact||45)+(b?.power||45)*.18-(m.strength||50)*.25)/100,.18,.72);
+   const roll=Math.random();let result;
+   if(roll<chance*.035)result='全壘打';else if(roll<chance*.13)result='二壘安打';else if(roll<chance*.48)result='一壘安打';else if(roll<chance*.55)result='保送';else if(roll<chance*.69)result='雙殺';else result=Math.random()<.48?'三振':'接殺出局';
+   applyBatterResult(result,b);
+  }else{
+   const p=m.pitcher||G.players.find(x=>x.pos==='投手');
+   if(p){
+    p.pitchCount=(p.pitchCount||0)+3+Math.floor(Math.random()*3);
+    p.stamina=clamp((p.stamina??65)-(0.8+Math.random()*0.6),0,100);
+   }
+   const fatigue=p&&p.stamina<10?1:0;
+   const def=clamp(((m.strength||50)-(p?.control||50)+45)/180,.12,.58);
+   const roll=Math.random();let result;
+   if(roll<def*(.04+fatigue*.08))result='全壘打';
+   else if(roll<def*(.15+fatigue*.10))result='二壘安打';
+   else if(roll<def*(.5+fatigue*.12))result='一壘安打';
+   else if(roll<def*(.58+fatigue*.08))result='保送';
+   else if(roll<def*.70)result='雙殺';
+   else result=Math.random()<(.5-fatigue*.15)?'三振':'接殺出局';
+   applyOpponentResult(result);
+  }
+  if(m.inning>9||m.finished)return;
+  if(m.outs>=3){endHalfInning();if(m.inning>9||m.finished)return}
+  if(hasScoringPosition(m)){m.logs.push('⚠️ 得點圈有人！暫停自動模擬，請教練指揮。');matchScreen();return}
+ }
+ matchScreen();
+}
+</script>
