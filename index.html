@@ -1525,3 +1525,18 @@ function autoPlayMatch(){
  };
 })();
 </script>
+
+
+<script>
+/* 2026-10-26：投手兼任DH退場時，替補投手與替補DH分開選；DH替補限非投手守位球員 */
+(function(){
+ const escDH2=s=>String(s??'—').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+ chooseDHReplacement=function(){
+  const m=currentMatch;if(!m)return;
+  // 替補投手已由「更換投手」流程選定；DH 必須另選一位尚未上場的野手，兩者不必同一人。
+  const opts=G.players.filter(p=>p.pos!=='投手'&&!(m.usedIds||[]).includes(p.id));
+  modal('<h2>⚠️ 原投手兼任 DH，請另選 DH 替補</h2><p>新投手已經選好。現在請從尚未上場的野手中，另選一位接替 DH；DH 替補不必是投手，也不會自動改成新投手。</p>'+
+   (opts.map(p=>'<div class="stat"><b>'+escDH2(p.name)+'｜'+escDH2(p.pos)+'｜'+escDH2(p.year||'')+'年級</b><p>綜合 '+calc(p)+'｜打擊 '+p.contact+'｜長打 '+p.power+'｜走力 '+p.speed+'｜守備 '+p.field+'</p><button class="primary" style="width:100%" onclick="replaceDH('+p.id+')">由 '+escDH2(p.name)+' 接替 DH</button></div>').join('')||'<p>目前沒有可用的野手替補，請先確認板凳名單。</p>'));
+ };
+})();
+</script>
