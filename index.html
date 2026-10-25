@@ -653,6 +653,39 @@ autoPlayMatch=function(){
  setTimeout(step,0);
 };
 
+
+/* 我方按下確認先發後立即開賽；電腦對手自動生成先發，不等待任何確認 */
+confirmLineup=function(){
+ const m=currentMatch,sp=$('starterPitcher'),eligible=G.players.filter(p=>p.pos!=='投手');
+ if(!m||!sp){alert('請先選擇先發投手。');return;}
+ const pitcher=G.players.find(p=>p.id===+sp.value);
+ const ids=Array.from({length:9},(_,i)=>{const el=$('lineup'+i);return el?+el.value:NaN;});
+ if(!pitcher){alert('找不到所選的先發投手，請重新選擇。');return;}
+ if(ids.some(id=>!id)||new Set(ids).size!==9||ids.some(id=>!eligible.some(p=>p.id===id))){
+  alert('先發九人不可重複，請確認九個棒次都已選好。');return;
+ }
+ m.pitcher=pitcher;
+ m.lineup=ids;
+ m.lineupIndex=0;
+ m.batter=G.players.find(p=>p.id===ids[0])||eligible[0];
+ m.usedIds=[...ids,pitcher.id];
+ m.active='bat';m.half='top';m.inning=1;m.outs=0;m.bases=[null,null,null];
+ /* 電腦隊自動配置先發，純由程式控制，無需對手按確認 */
+ m.awayLineup=Array.from({length:9},(_,i)=>({
+  name:(m.team||'對手')+'打者'+(i+1),
+  contact:Math.max(35,Math.min(90,Math.round((m.strength||50)*.78+8+(Math.random()*10-5)))),
+  power:Math.max(30,Math.min(92,Math.round((m.strength||50)*.72+10+(Math.random()*12-6)))),
+  speed:Math.max(35,Math.min(85,Math.round((m.strength||50)*.65+12+(Math.random()*10-5)))),
+  opponent:true
+ }));
+ m.awayLineupIndex=0;
+ m.opponentBatter=m.awayLineup[0];
+ m.logs.push('先發投手：'+pitcher.name+'；我方打線已確認。電腦對手已自動排定先發，比賽開始！');
+ m.autoRunning=false;
+ matchScreen();
+ setTimeout(()=>{if(currentMatch===m&&!hasScoringPosition(m))autoPlayMatch();},0);
+};
+
 function getOpponentBatter(m){
  if(!m.opponentBatter){
   const strength=Number(m.strength)||50;
