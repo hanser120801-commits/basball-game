@@ -479,4 +479,124 @@ function matchScreen(){
  if(typeof drawFace==='function'){if(batter)drawFace('matchBatter',batter);if(pitcher)drawFace('matchPitcher',pitcher);}
 }
 </script>
+
+<script>
+/* 自動比賽入口與賽後結算：例行局面自動推進，得點圈有人才暫停 */
+(function(){
+ const oldMatchScreen = matchScreen;
+ const oldTactic = tactic;
+ const oldFinishMatch = finishMatch;
+
+ function showSettlement(snapshot){
+   const win = snapshot.scoreUs > snapshot.scoreThem;
+   const result = win ? '勝利！' : snapshot.scoreUs < snapshot.scoreThem ? '敗北' : '平手';
+   const innings = snapshot.inningLog || [];
+   modal(`<div class="ceremony">
+     <div class="trophy">${win?'🏆':'⚾'}</div>
+     <h1>比賽結算</h1>
+     <p>第 ${G.year} 年・${snapshot.name}</p>
+     <h2>${G.school}　VS　${snapshot.team}</h2>
+     <div class="score">${snapshot.scoreUs}　:　${snapshot.scoreThem}</div>
+     <h2 class="${win?'gold':'muted'}">${result}</h2>
+     <div class="stat" style="text-align:left;margin:12px 0">
+       <p>比賽局數：${snapshot.inning||9} 局</p>
+       <p>最終比分：我方 ${snapshot.scoreUs} 分、對方 ${snapshot.scoreThem} 分</p>
+       <p>比賽結果：${win?'獲勝，學校聲譽與賽事進度已更新。':snapshot.scoreUs===snapshot.scoreThem?'平手，已完成賽事結算。':'落敗，賽事進度已更新。'}</p>
+     </div>
+     <button class="primary" style="width:100%" onclick="closeModal();render()">確認結算並返回學校</button>
+   </div>`);
+ }
+
+ finishMatch = function(){
+   const m = currentMatch;
+   if(!m){ return oldFinishMatch(); }
+   const snapshot = {name:m.name,team:m.team,scoreUs:m.scoreUs,scoreThem:m.scoreThem,inning:m.inning,inningLog:(m.logs||[]).slice()};
+   oldFinishMatch();
+   showSettlement(snapshot);
+ };
+
+ matchScreen = function(){
+   const m=currentMatch;
+   if(!m)return;
+   oldMatchScreen();
+   if(!hasScoringPosition(m) && !m.finished && !m.autoRunning){
+     m.autoRunning=true;
+     setTimeout(function(){
+       if(currentMatch===m && !hasScoringPosition(m)) autoPlayMatch();
+       else if(currentMatch===m) m.autoRunning=false;
+     },80);
+   }
+ };
+
+ const baseAutoPlay = autoPlayMatch;
+ autoPlayMatch = function(){
+   const m=currentMatch;
+   if(!m || m.autoRunning)return;
+   m.autoRunning=true;
+   let plays=0;
+   try{
+     while(currentMatch===m && plays++<500 && m.inning<=9){
+       if(hasScoringPosition(m)){
+         m.autoRunning=false;
+         m.logs.push('⚠️ 得點圈有人！自動比賽暫停，請進行關鍵手動指揮。');
+         oldMatchScreen();
+         return;
+       }
+       if(m.outs>=3){endHalfInning();if(currentMatch!==m)return;continue;}
+       if(m.active==='bat'){
+         const b=m.batter||G.players.find(p=>p.id===m.lineup?.[m.lineupIndex])||G.players.find(p=>p.pos!=='投手')||G.players[0];
+         const chance=clamp(((b?.contact||45)+(b?.power||45)*.18-(m.strength||50)*.25)/100,.18,.72);
+         const roll=Math.random();let result;
+         if(roll<chance*.035)result='全壘打';
+         else if(roll<chance*.13)result='二壘安打';
+         else if(roll<chance*.48)result='一壘安打';
+         else if(roll<chance*.55)result='保送';
+         else if(roll<chance*.69)result='雙殺';
+         else result=Math.random()<.48?'三振':'接殺出局';
+         applyBatterResult(result,b);
+       }else{
+         const p=m.pitcher||G.players.find(x=>x.pos==='投手');
+         if(p){p.pitchCount=(p.pitchCount||0)+1;p.stamina=clamp((p.stamina??65)-1,0,100);}
+         const def=clamp(((m.strength||50)-(p?.control||50)+45)/180,.12,.58);
+         const roll=Math.random();let result;
+         if(roll<def*.04)result='全壘打';
+         else if(roll<def*.15)result='二壘安打';
+         else if(roll<def*.5)result='一壘安打';
+         else if(roll<def*.58)result='保送';
+         else if(roll<def*.70)result='雙殺';
+         else result=Math.random()<.5?'三振':'接殺出局';
+         applyOpponentResult(result);
+       }
+       if(currentMatch!==m || m.inning>9 || m.finished)return;
+       if(m.outs>=3){endHalfInning();if(currentMatch!==m)return;}
+       if(hasScoringPosition(m)){
+         m.autoRunning=false;
+         m.logs.push('⚠️ 得點圈有人！自動比賽暫停，請進行關鍵手動指揮。');
+         oldMatchScreen();
+         return;
+       }
+     }
+   }finally{
+     if(currentMatch===m)m.autoRunning=false;
+   }
+   if(currentMatch===m){
+     if(m.inning>9){finishMatch();return;}
+     setTimeout(function(){if(currentMatch===m&&!hasScoringPosition(m))autoPlayMatch();},30);
+   }
+ };
+
+ tactic = function(k){
+   const m=currentMatch;
+   oldTactic(k);
+   if(!m || currentMatch!==m)return;
+   setTimeout(function(){
+     if(currentMatch!==m)return;
+     if(hasScoringPosition(m)){matchScreen();return;}
+     closeModal();
+     m.autoRunning=false;
+     autoPlayMatch();
+   },40);
+ };
+})();
+</script>
 </body></html>
