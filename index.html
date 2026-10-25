@@ -413,4 +413,70 @@ function matchScreen(){
  if(typeof drawFace==='function'){if(batter)drawFace('matchBatter',batter);drawFace('matchPitcher',pitcher||batter);}
 }
 </script>
+
+<script>
+/* Match flow: routine play is simulated automatically; coach intervenes only with runners in scoring position. */
+function hasScoringPosition(m){
+ return !!(m && m.bases && (m.bases[1] || m.bases[2]));
+}
+function autoPlayMatch(){
+ const m=currentMatch;if(!m)return;
+ let plays=0;
+ while(currentMatch===m && plays++<160 && m.inning<=9){
+  if(hasScoringPosition(m)){
+   m.logs.push('⚠️ 得點圈有人！進入關鍵手動指揮。');
+   matchScreen();return;
+  }
+  if(m.outs>=3){endHalfInning();if(currentMatch!==m)return;continue;}
+  if(m.active==='bat'){
+   const b=m.batter||G.players.find(p=>p.id===m.lineup?.[m.lineupIndex])||G.players.find(p=>p.pos!=='投手')||G.players[0];
+   const chance=clamp(((b?.contact||45)+(b?.power||45)*.18-(m.strength||50)*.25)/100,.18,.72);
+   const roll=Math.random();
+   let result;
+   if(roll<chance*.035)result='全壘打';
+   else if(roll<chance*.13)result='二壘安打';
+   else if(roll<chance*.48)result='一壘安打';
+   else if(roll<chance*.55)result='保送';
+   else if(roll<chance*.69)result='雙殺';
+   else result=Math.random()<.48?'三振':'接殺出局';
+   applyBatterResult(result,b);
+  }else{
+   const p=m.pitcher||G.players.find(x=>x.pos==='投手');
+   if(p){p.pitchCount=(p.pitchCount||0)+1;p.stamina=clamp((p.stamina??65)-1,0,100);}
+   const def=clamp(((m.strength||50)-(p?.control||50)+45)/180,.12,.58);
+   const roll=Math.random();let result;
+   if(roll<def*.04)result='全壘打';
+   else if(roll<def*.15)result='二壘安打';
+   else if(roll<def*.5)result='一壘安打';
+   else if(roll<def*.58)result='保送';
+   else if(roll<def*.70)result='雙殺';
+   else result=Math.random()<.5?'三振':'接殺出局';
+   applyOpponentResult(result);
+  }
+  if(m.inning>9 || m.finished)return;
+  if(m.outs>=3){endHalfInning();if(m.inning>9||m.finished)return;}
+  if(hasScoringPosition(m)){
+   m.logs.push('⚠️ 得點圈有人！暫停自動模擬，請教練指揮。');
+   matchScreen();return;
+  }
+ }
+ matchScreen();
+}
+function matchScreen(){
+ const m=currentMatch;if(!m)return;
+ const pitcher=m.pitcher||G.players.find(p=>p.pos==='投手');
+ const batter=m.batter||G.players.find(p=>p.id===m.lineup?.[m.lineupIndex])||G.players.find(p=>p.pos!=='投手')||G.players[0];
+ const op=typeof getOpponentPitcher==='function'?getOpponentPitcher(m):null;
+ const critical=hasScoringPosition(m);
+ modal(`<div class="between"><h2>⚾ ${m.name}</h2><button onclick="forfeitMatch()">離開比賽</button></div>
+ <div class="stat" style="text-align:center"><div>${G.school}　VS　${m.team}</div><div class="score">${m.scoreUs}　:　${m.scoreThem}</div><div>第 ${m.inning} 局・${m.active==='bat'?'我方進攻':'我方防守'}・${m.outs||0} 出局</div><div class="${critical?'gold':'muted'}">${critical?'⚠️ 得點圈有人：關鍵手動指揮':'自動比賽進行中：例行打席由系統模擬'}</div></div>
+ <div class="matchgrid" style="margin-top:8px">
+ <div class="panel"><h3>我方打者</h3><div class="player"><canvas id="matchBatter" width="48" height="56"></canvas><div>${batter?.name||'—'}<br>打擊 ${batter?.contact??'—'}<br>長打 ${batter?.power??'—'}<br>走力 ${batter?.speed??'—'}</div></div></div>
+ <div class="panel"><h3>壘包情報</h3><div class="diamond"><i class="base b1 ${m.bases[0]?'on':''}"></i><i class="base b2 ${m.bases[1]?'on':''}"></i><i class="base b3 ${m.bases[2]?'on':''}"></i><i class="base home"></i></div><div class="diamondlabels">一壘 ${m.bases[0]?'有跑者':'空'}<br>二壘 ${m.bases[1]?'有跑者':'空'}　 三壘 ${m.bases[2]?'有跑者':'空'}</div></div>
+ <div class="panel"><h3>對方投手</h3><div class="player"><canvas id="matchPitcher" width="48" height="56"></canvas><div>${op?op.name:(m.team+'先發投手')}<br>球速 ${op?op.pitchSpeed:'—'} km/h<br>控球 ${op?op.control:'—'}<br>體力 ${op?op.stamina:'—'}/100</div></div></div></div>
+ ${critical?`<div class="panel" style="margin-top:8px"><h3>🎯 關鍵局面：教練指揮</h3><p>只有二壘或三壘有跑者（包含一二壘、二三壘及滿壘）才需要手動操作。</p><div class="tactics">${(m.active==='bat'?[['強振大棒','power'],['確實擊球','contact'],['短打推進','bunt'],['盜壘','steal']]:[['全力投球','full'],['變化球誘敵','curve'],['敬遠（故意四壞）','walk'],['牽制壘包','pickoff']]).map(([n,k])=>`<button onclick="tactic('${k}')">${n}</button>`).join('')}</div></div>`:`<div class="panel" style="margin-top:8px"><h3>🤖 自動比賽</h3><p>系統會自動模擬一般打席，直到得點圈出現跑者才暫停讓你指揮。</p><button class="primary" style="width:100%" onclick="autoPlayMatch()">▶ 自動進行至下一個關鍵局面</button></div>`}
+ <div class="panel" style="margin-top:8px"><h3>比賽紀錄</h3><div class="log">${(m.logs||[]).slice(-6).map(x=>`<div>${x}</div>`).join('')}</div><button style="width:100%;margin-top:8px" onclick="autoPlayMatch()">${critical?'▶ 繼續自動比賽':'▶ 繼續模擬'}</button></div>`);
+ if(typeof drawFace==='function'){if(batter)drawFace('matchBatter',batter);if(pitcher)drawFace('matchPitcher',pitcher);}
+}
+</script>
 </body></html>
