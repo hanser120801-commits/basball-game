@@ -593,33 +593,29 @@ function matchScreen(){
 <script>
 /* 手動戰術結果放慢閱讀；依攻守切換球員面板；投手列出實際球種 */
 
-/* 修正卡住：改成逐打席非同步模擬，避免同步迴圈凍結手機瀏覽器 */
+/* 自動比賽快速背景模擬；只有手動戰術後的結果畫面停留給玩家閱讀 */
 autoPlayMatch=function(){
  const m=currentMatch;
  if(!m||m.autoRunning)return;
  m.autoRunning=true;
  let plays=0;
  function step(){
-  if(currentMatch!==m){return;}
-  if(m.inning>9||m.finished){
-   m.autoRunning=false;
-   finishMatch();
-   return;
-  }
+  if(currentMatch!==m)return;
+  if(m.inning>9||m.finished){m.autoRunning=false;finishMatch();return;}
   if(hasScoringPosition(m)){
    m.autoRunning=false;
    m.logs.push('⚠️ 得點圈有人！自動比賽暫停，請進行關鍵手動指揮。');
-   matchScreen();
-   return;
+   matchScreen();return;
   }
   if(plays++>=500){
    m.autoRunning=false;
-   matchScreen();
-   return;
+   m.logs.push('本次自動模擬已達安全上限，請按自動比賽繼續。');
+   matchScreen();return;
   }
+  /* applyBatterResult / applyOpponentResult 已處理三出局與換局，避免重複換局 */
   if(m.outs>=3){
    endHalfInning();
-   if(currentMatch!==m){return;}
+   if(currentMatch!==m)return;
    if(m.inning>9||m.finished){m.autoRunning=false;finishMatch();return;}
   }else if(m.active==='bat'){
    const b=m.batter||G.players.find(p=>p.id===m.lineup?.[m.lineupIndex])||G.players.find(p=>p.pos!=='投手')||G.players[0];
@@ -645,20 +641,16 @@ autoPlayMatch=function(){
    else result=Math.random()<.5?'三振':'接殺出局';
    applyOpponentResult(result);
   }
-  if(currentMatch!==m){return;}
-  if(m.inning>9||m.finished){m.autoRunning=false;finishMatch();return;}
-  if(m.outs>=3)endHalfInning();
-  if(currentMatch!==m){return;}
+  if(currentMatch!==m)return;
   if(m.inning>9||m.finished){m.autoRunning=false;finishMatch();return;}
   if(hasScoringPosition(m)){
    m.autoRunning=false;
    m.logs.push('⚠️ 得點圈有人！自動比賽暫停，請進行關鍵手動指揮。');
-   matchScreen();
-   return;
+   matchScreen();return;
   }
-  setTimeout(step,35);
+  setTimeout(step,0);
  }
- setTimeout(step,35);
+ setTimeout(step,0);
 };
 
 function getOpponentBatter(m){
