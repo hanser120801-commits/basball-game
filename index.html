@@ -1165,3 +1165,68 @@ finishBracketRound=function(m,win){
  };
 })();
 </script>
+
+<script>
+/* 投手輪休恢復、投球消耗加重、100–120 球低體力換投警示 */
+(function(){
+ const oldLineupSetup=lineupSetup;
+ const oldApplyOpponent=applyOpponentResult;
+ const oldMatchScreen=matchScreen;
+ const oldFinish=finishMatch;
+ // 每場開始時，上一場沒有登板的投手完成一場休息後恢復到個人初始體力。
+ lineupSetup=function(){
+  if(G){
+   G.pitcherRestState ||= {lastUsed:[]};
+   for(const p of G.players||[]){
+    if(p.pos!=='投手')continue;
+    if(p.staminaInitial==null)p.staminaInitial=Number.isFinite(p.stamina)?p.stamina:60;
+    if(!G.pitcherRestState.lastUsed.includes(p.id)){
+     p.stamina=p.staminaInitial;
+     p.pitchCount=0;
+    }
+   }
+  }
+  return oldLineupSetup.apply(this,arguments);
+ };
+ // 比賽結束時記錄本場實際登板的我方投手；下場開始時，未登板者視為休息一場。
+ finishMatch=function(){
+  const m=currentMatch;
+  if(m&&G){
+   G.pitcherRestState ||= {lastUsed:[]};
+   const used=new Set(m.usedPitcherIds||[]);
+   if(m.pitcher&&m.pitcher.id)used.add(m.pitcher.id);
+   for(const p of G.players||[]){
+    if(p.pos==='投手'&&(p.pitchCount||0)>0)used.add(p.id);
+   }
+   G.pitcherRestState.lastUsed=[...used];
+  }
+  return oldFinish.apply(this,arguments);
+ };
+ // 每次對方打席以平均約 3–5 球估算，並增加額外體力消耗。
+ applyOpponentResult=function(result){
+  const m=currentMatch,p=m&&m.pitcher;
+  if(m&&p){
+   m.usedPitcherIds ||= [];
+   if(p.id&&!m.usedPitcherIds.includes(p.id))m.usedPitcherIds.push(p.id);
+   p.pitchCount=(p.pitchCount||0)+(2+Math.floor(Math.random()*3));
+   p.stamina=clamp((p.stamina??60)-(2.2+Math.random()*1.4),0,100);
+  }
+  const out=oldApplyOpponent.apply(this,arguments);
+  return out;
+ };
+ matchScreen=function(){
+  const m=currentMatch;
+  if(m&&m.pitcher){
+   const p=m.pitcher;
+   const count=p.pitchCount||0, stamina=p.stamina??100;
+   if(count>=100&&stamina<10&&!m.pitchWarningShown){
+    m.pitchWarningShown=true;
+    m.logs.push('⚠️ 投手疲勞警示：'+p.name+' 已投 '+count+' 球，體力僅 '+Math.round(stamina)+'%，建議立即換投。');
+    modal('<div class="ceremony"><h2>⚠️ 投手疲勞警示</h2><div class="stat"><h3>'+String(p.name).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))+'</h3><p>目前投球數：'+count+' 球</p><p>剩餘體力：'+Math.round(stamina)+'%</p><p>投球數已達 100 球以上且體力低於 10%，控球與壓制能力可能下降，建議立即更換投手。</p></div><button class="primary" style="width:100%" onclick="choosePitcherSub()">立即更換投手</button><button style="width:100%;margin-top:8px" onclick="closeModal();matchScreen()">暫時繼續投球</button></div>');
+    return;
+   }
+  }
+  return oldMatchScreen.apply(this,arguments);
+ };
+})();
+</script>
