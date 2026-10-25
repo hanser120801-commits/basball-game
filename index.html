@@ -332,4 +332,51 @@ function autoPlayMatch(){
 }
 </script>
 
+
+<script>
+/* 修正安打時所有跑者推進、得分與棒次輪替 */
+function applyBatterResult(result,b){
+ const m=currentMatch;if(!m)return;const old=m.bases.slice();let outs=0,runs=0;
+ if(result==='三振'||result==='接殺出局')outs=1;
+ else if(result==='雙殺'){outs=2;m.bases=[null,old[1],old[2]]}
+ else if(result==='保送'){
+  if(old[0]&&old[1]&&old[2])runs++;
+  m.bases[2]=old[0]&&old[1]?old[1]:old[2];
+  m.bases[1]=old[0]?old[0]:old[1];
+  m.bases[0]=b||{name:'代跑者',speed:50};
+ }else if(result==='一壘安打'||result==='失誤上壘'){
+  m.bases=[null,null,null];
+  if(old[2])runs++;else if(old[2]===null&&old[1]&&old[0]){} 
+  if(old[1])m.bases[2]=old[1];
+  if(old[0])m.bases[1]=old[0];
+  m.bases[0]=b||{name:'代跑者',speed:50};
+  if(old[2])runs++;
+ }else if(['二壘安打','三壘安打','全壘打'].includes(result)){
+  const n=result==='二壘安打'?2:result==='三壘安打'?3:4;m.bases=[null,null,null];
+  old.forEach((runner,i)=>{if(!runner)return;const dest=i+n;if(dest>=3)runs++;else m.bases[dest]=runner});
+  if(n===4)runs++;else m.bases[n-1]=b||{name:'代跑者',speed:50};
+ }
+ m.scoreUs+=runs;m.outs+=outs;m.logs.push((b?.name||'我方打者')+'：'+result+(runs?'，跑回 '+runs+' 分':'')+'。');
+ moveBatterIndex();
+ if(m.outs>=3)endHalfInning();else if(m.inning>=9&&m.active==='field'&&m.scoreUs>m.scoreThem)finishMatch();
+}
+function applyOpponentResult(result){
+ const m=currentMatch;if(!m)return;const old=m.bases.slice();let outs=0,runs=0;
+ if(result==='三振'||result==='接殺出局')outs=1;
+ else if(result==='雙殺'){outs=2;m.bases=[null,old[1],old[2]]}
+ else if(result==='保送'){
+  if(old[0]&&old[1]&&old[2])runs++;
+  m.bases[2]=old[0]&&old[1]?old[1]:old[2];m.bases[1]=old[0]?old[0]:old[1];m.bases[0]={name:'對方跑者',speed:55,opponent:true};
+ }else if(result==='一壘安打'||result==='失誤'){
+  m.bases=[null,null,null];if(old[2])runs++;if(old[1])m.bases[2]=old[1];if(old[0])m.bases[1]=old[0];m.bases[0]={name:'對方跑者',speed:55,opponent:true};
+ }else{
+  const n=result==='二壘安打'?2:result==='三壘安打'?3:4;m.bases=[null,null,null];
+  old.forEach((runner,i)=>{if(!runner)return;const dest=i+n;if(dest>=3)runs++;else m.bases[dest]=runner});
+  if(n===4)runs++;else m.bases[n-1]={name:'對方跑者',speed:55,opponent:true};
+ }
+ m.scoreThem+=runs;m.outs+=outs;m.logs.push('對方打者：'+result+(runs?'，對方得 '+runs+' 分':'')+'。');
+ if(m.outs>=3)endHalfInning();
+}
+</script>
+
 </body></html>
