@@ -805,4 +805,35 @@ autoPlayMatch = function(){
 };
 </script>
 
+
+<script>
+/* 賽前賽事說明與高中棒球賽制流程 */
+const _startTournamentWithPreview = startTournament;
+startTournament = function(type){
+ const rules={
+  summer:{title:'夏季地方大會',period:'6–7 月',format:'都道府縣淘汰賽',detail:'夏季甲子園採資格賽制。各都道府縣（北海道、東京都分區）選出代表校，地方大會冠軍才能取得夏季甲子園代表資格。',round:'地方大會'},
+  koshien:{title:'夏季甲子園大賽',period:'8 月',format:'49 校全國淘汰賽',detail:'夏季甲子園由 49 支地方代表校參賽，採單敗淘汰制；輸球即止步，連勝才能爭奪全國冠軍。',round:'甲子園首戰'},
+  autumn:{title:'秋季地方大會',period:'9 月',format:'都道府縣新隊伍淘汰賽',detail:'夏季結束後由新隊伍參賽。地方大會成績會影響地區大會種子與春季選拔的推薦評估，但地方冠軍不代表必然獲選春甲。',round:'地方大會'},
+  regional:{title:'秋季地區大會',period:'10–11 月',format:'地區代表校淘汰賽',detail:'先在秋季地方大會爭取晉級，再與同地區強校競爭。地區大會成績是春季選拔的重要參考之一，但春甲由選考委員會依成績、比賽內容及選拔方針決定，並非自動晉級。',round:'地區大會'},
+  spring:{title:'春季選拔甲子園（春甲）',period:'3 月',format:'32 校邀請制淘汰賽',detail:'春甲沒有一般形式的地方資格賽。原則上由選考委員會參考前一年秋季地方／地區大會成績與比賽內容選出 32 校，另依當屆規定處理特別選拔名額。入選後進行單敗淘汰，輸球即出局。',round:'32 強'}
+ };
+ const r=rules[type]||{title:'練習賽',period:'全年',format:'單場比賽',detail:'以累積實戰經驗、觀察球員狀態為主。',round:'練習賽'};
+ const blockers=[];
+ if(type==='koshien'&&!G.championSummer)blockers.push('尚未贏得夏季地方大會，因此還沒有夏季甲子園代表資格。');
+ if(type==='regional'&&!G.events.autumn?.includes('優勝'))blockers.push('請先贏得秋季地方大會，才能代表地區參加秋季地區大會。');
+ if(type==='spring'&&!G.springQualified)blockers.push('目前尚未取得春季選拔參考資格。請先完成秋季地方大會與秋季地區大會，累積足夠成績；即使符合條件，春甲仍屬選拔制。');
+ modal('<div class="ceremony" style="text-align:left"><div style="text-align:center;font-size:36px">⚾🏟️</div><h1 style="text-align:center">'+r.title+'</h1><div class="stat"><p><b>賽事時節：</b>'+r.period+'</p><p><b>賽制：</b>'+r.format+'</p><p><b>本場定位：</b>'+r.round+'</p></div><h3>📣 賽前賽事說明</h3><p style="line-height:1.8">'+r.detail+'</p>'+(blockers.length?'<div class="stat" style="border:2px solid #d88b42"><b>目前無法參賽</b>'+blockers.map(x=>'<p>'+x+'</p>').join('')+'</div>':'<p class="muted">下一步將進入賽前先發安排，確認投手與先發九人後開賽。</p>')+'<button class="primary" style="width:100%;margin-top:12px" '+(blockers.length?'disabled':'')+' onclick="closeModal();_startTournamentWithPreview(\''+type+'\')">了解規則，安排先發 ▶</button><button style="width:100%;margin-top:7px" onclick="closeModal()">返回日程</button></div>');
+};
+/* 將賽事資訊加入先發畫面，讓玩家知道自己打的是哪一輪 */
+const _lineupSetupWithEvent = lineupSetup;
+lineupSetup = function(){
+ const m=currentMatch;
+ _lineupSetupWithEvent();
+ if(!m)return;
+ const modalRoot=document.querySelector('#modalContent')||document.querySelector('.modal-content')||document.querySelector('#modal');
+ const textNodes=document.querySelectorAll('h2');
+ for(const h of textNodes){if(h.textContent.includes('賽前先發陣容')){const p=document.createElement('div');p.className='stat';p.style.margin='8px 0';p.innerHTML='<b>🏆 賽事：</b>'+m.name+'　｜　<b>賽事階段：</b>'+({spring:'春季選拔・32 強',koshien:'夏季甲子園全國賽',summer:'夏季地方大會',autumn:'秋季地方大會',regional:'秋季地區大會'}[m.type]||'練習賽')+'<br><small>賽制與晉級規則已在上一頁說明</small>';h.parentNode.insertBefore(p,h.nextSibling);break;}}
+};
+</script>
+
 </body></html>
