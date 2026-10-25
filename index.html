@@ -1230,3 +1230,71 @@ finishBracketRound=function(m,win){
  };
 })();
 </script>
+
+
+<script>
+/* 投手疲勞規則修正：所有投手休息一場後恢復；體力按使用量漸進下降，低於10%時影響本場表現 */
+(function(){
+ const previousLineupSetup=lineupSetup;
+ const previousApplyOpponent=applyOpponentResult;
+ const previousTactic=tactic;
+ const previousMatchScreen=matchScreen;
+
+ // 不論上一場是否登板，只要進入下一場比賽，所有投手都恢復個人初始體力。
+ lineupSetup=function(){
+  if(G){
+   for(const p of G.players||[]){
+    if(p.pos!=='投手')continue;
+    if(p.staminaInitial==null)p.staminaInitial=Number.isFinite(p.stamina)?p.stamina:60;
+    p.stamina=p.staminaInitial;
+    p.pitchCount=0;
+   }
+   G.pitcherRestState={lastUsed:[]};
+  }
+  return previousLineupSetup.apply(this,arguments);
+ };
+
+ // 投球消耗以每個對方打席約3–5球估算，體力逐步扣除，不再因投球數跨過100球突然額外扣體力。
+ applyOpponentResult=function(result){
+  const m=currentMatch,p=m&&m.pitcher;
+  if(m&&p){
+   m.usedPitcherIds ||= [];
+   if(p.id&&!m.usedPitcherIds.includes(p.id))m.usedPitcherIds.push(p.id);
+  }
+  return previousApplyOpponent.apply(this,arguments);
+ };
+
+ // 原本戰術每次扣2或4點體力，改成每次對方打席平均扣約0.8–1.4點；
+ // 投球數每個打席累加3–5球。低於10%時，既有比賽判定會降低我方打者命中率、
+ // 增加對方打者攻擊成功率，並顯示體力警告。
+ tactic=function(k){
+  const m=currentMatch;
+  if(!m||m.active!=='field'||!m.pitcher)return previousTactic.apply(this,arguments);
+  const p=m.pitcher, beforeStamina=Number.isFinite(p.stamina)?p.stamina:60;
+  const beforeCount=p.pitchCount||0;
+  const result=previousTactic.apply(this,arguments);
+  // 只在原戰術確實進行一次投球後調整；敬遠、牽制等特殊操作不額外計算。
+  if(m.pitcher===p && (p.pitchCount||0)>beforeCount){
+   p.pitchCount=beforeCount+3+Math.floor(Math.random()*3);
+   p.stamina=clamp(beforeStamina-(0.8+Math.random()*0.6),0,100);
+   if(p.stamina<10&&!m.pitchWarningShown){
+    m.pitchWarningShown=true;
+    m.logs.push('⚠️ 投手疲勞警示：'+p.name+' 體力已低於10%，本場投球能力大幅下降，建議換投。');
+   }
+  }
+  return result;
+ };
+
+ // 畫面警告只看體力，不以投球數作為門檻；同場只提醒一次。
+ matchScreen=function(){
+  const m=currentMatch,p=m&&m.pitcher;
+  if(m&&p&&(p.stamina??100)<10&&!m.pitchWarningShown){
+   m.pitchWarningShown=true;
+   m.logs.push('⚠️ 投手疲勞警示：'+p.name+' 體力已低於10%，本場投球能力大幅下降，建議換投。');
+   modal('<div class="ceremony"><h2>⚠️ 投手疲勞警示</h2><div class="stat"><h3>'+String(p.name).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))+'</h3><p>目前投球數：'+(p.pitchCount||0)+' 球</p><p>剩餘體力：'+Math.round(p.stamina)+'%</p><p>體力低於10%，本場控球與壓制能力大幅下降，對方更容易打出安打或長打，建議更換投手。</p></div><button class="primary" style="width:100%" onclick="choosePitcherSub()">立即更換投手</button><button style="width:100%;margin-top:8px" onclick="closeModal();matchScreen()">暫時繼續投球</button></div>');
+   return;
+  }
+  return previousMatchScreen.apply(this,arguments);
+ };
+})();
+</script>
