@@ -1777,3 +1777,58 @@ function autoPlayMatch(){
  };
 })();
 </script>
+
+<script>
+/* 2026-10-26：全面採用 DH 制，投手不必打擊；DH 棒次可自由安排 */
+(function(){
+ const baseSetup=lineupSetup;
+ lineupSetup=function(){
+  baseSetup.apply(this,arguments);
+  const modalEl=document.querySelector('#modalRoot .modal');
+  const dh=$('lineupDH');
+  if(!modalEl||!dh)return;
+  const dhRow=dh.closest('.lineup-row');
+  if(!dhRow)return;
+  let order=document.getElementById('dhBatOrder');
+  if(!order){
+   const label=document.createElement('label');label.textContent='DH 打序位置';label.style.display='block';label.style.marginTop='8px';
+   order=document.createElement('select');order.id='dhBatOrder';order.style.width='100%';
+   for(let i=1;i<=9;i++){const o=document.createElement('option');o.value=String(i);o.textContent='第 '+i+' 棒';order.appendChild(o)}
+   label.appendChild(order);dhRow.parentNode.insertBefore(label,dhRow);
+   order.value='9';
+   order.addEventListener('change',()=>{
+    const rows=document.getElementById('lineupRows');if(!rows)return;
+    const all=[...rows.querySelectorAll('.lineup-row')];
+    const n=Number(order.value)-1;
+    const target=all[Math.min(n,all.length-1)];
+    if(n>=all.length)rows.appendChild(dhRow);else rows.insertBefore(dhRow,target);
+    dhRow.querySelector('b').textContent=order.value+'棒 DH';
+    all.forEach((r,i)=>{if(r!==dhRow){const b=r.querySelector('b');if(b)b.textContent=(i+1+(i>=n?1:0))+'棒'}});
+   });
+  }
+  const updateOrder=()=>{const rows=document.getElementById('lineupRows');if(!rows)return;const all=[...rows.querySelectorAll('.lineup-row')];const n=Number(order.value)-1;const target=all[Math.min(n,all.length-1)];if(n>=all.length)rows.appendChild(dhRow);else rows.insertBefore(dhRow,target);dhRow.querySelector('b').textContent=order.value+'棒 DH';};
+  order.onchange=updateOrder;
+  updateOrder();
+ };
+ confirmLineup=function(){
+  const m=currentMatch,sp=$('starterPitcher');
+  if(!m||!sp){alert('請先選擇先發投手。');return;}
+  const pitcher=G.players.find(p=>Number(p.id)===Number(sp.value));
+  const fieldIds=Array.from({length:8},(_,i)=>Number($('lineup'+i)?.value));
+  const dhId=Number($('lineupDH')?.value),dhOrder=Math.max(1,Math.min(9,Number($('dhBatOrder')?.value)||9));
+  const fieldPlayers=fieldIds.map(id=>G.players.find(p=>Number(p.id)===id));
+  const dh=G.players.find(p=>Number(p.id)===dhId);
+  if(!pitcher){alert('找不到所選的先發投手，請重新選擇。');return;}
+  if(fieldPlayers.some(p=>!p)||!dh){alert('請確認八名守備球員與 DH 都已選擇。');return;}
+  if(new Set([...fieldIds,dhId]).size!==9){alert('打線九個棒次不可重複使用同一名球員；DH 必須是八名守備球員以外的球員。');return;}
+  if(fieldPlayers.some(p=>p.pos==='投手')){alert('八個守備位置請選擇野手；投手只有在被選為 DH 時才會打擊。');return;}
+  const positions=fieldPlayers.map(p=>p.pos);
+  if(new Set(positions).size!==8){const duplicates=positions.filter((p,i)=>positions.indexOf(p)!==i);alert('守備位置不可重複：'+[...new Set(duplicates)].join('、')+' 已被多名先發球員選用，請調整棒次。');return;}
+  const lineup=fieldIds.slice();lineup.splice(dhOrder-1,0,dhId);
+  m.pitcher=pitcher;m.lineup=lineup;m.dhId=dhId;m.dhActive=true;m.dhPitcherId=dhId===pitcher.id?pitcher.id:null;m.dhVacant=false;m.dhLineupIndex=dhOrder-1;
+  m.lineupIndex=0;m.batter=G.players.find(p=>Number(p.id)===lineup[0]);m.usedIds=[...new Set([...lineup,pitcher.id])];m.active='bat';m.half='top';m.inning=1;m.outs=0;m.bases=[null,null,null];
+  m.logs.push('先發投手：'+pitcher.name+'；採用 DH 制，投手不必打擊；DH：'+dh.name+'（第 '+dhOrder+' 棒）'+(dhId===pitcher.id?'（投手兼任 DH，二刀流）':'')+'；先發守位已確認。');
+  matchScreen();
+ };
+})();
+</script>
