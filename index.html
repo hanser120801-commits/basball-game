@@ -184,24 +184,30 @@ function startTournament(type){
 }
 function lineupSetup(){
  const m=currentMatch,eligible=G.players.filter(p=>p.pos!=='投手'),pitchers=G.players.filter(p=>p.pos==='投手');
- // 優先沿用上場確認過的先發打序；若球員名單變動，才退回能力排序。
- const saved=Array.isArray(G.savedLineup)?G.savedLineup:[];
- const savedIsValid=saved.length===9&&new Set(saved).size===9&&saved.every(id=>eligible.some(p=>p.id===id));
- const lineup=savedIsValid?saved.slice():eligible.slice().sort((a,b)=>calc(b)-calc(a)).slice(0,9).map(p=>p.id);
- const savedPitcher=G.players.find(p=>p.id===G.savedPitcherId&&p.pos==='投手');
+ // 同時從隊伍資料與獨立本機記錄讀取，避免進入下一場時被初始排序覆蓋。
+ let stored=null;
+ try{stored=JSON.parse(localStorage.getItem('eikanSavedLineup')||'null')}catch(e){}
+ const saved=Array.isArray(G.savedLineup)&&G.savedLineup.length===9?G.savedLineup:(stored&&Array.isArray(stored.lineup)?stored.lineup:[]);
+ const resolved=saved.map(id=>eligible.find(p=>String(p.id)===String(id))).filter(Boolean);
+ const savedIsValid=saved.length===9&&resolved.length===9&&new Set(resolved.map(p=>String(p.id))).size===9;
+ const lineup=savedIsValid?resolved.map(p=>p.id):eligible.slice().sort((a,b)=>calc(b)-calc(a)).slice(0,9).map(p=>p.id);
+ const savedPitcherId=G.savedPitcherId!=null?G.savedPitcherId:(stored?stored.pitcherId:null);
+ const savedPitcher=pitchers.find(p=>String(p.id)===String(savedPitcherId));
  const selectedPitcher=savedPitcher?savedPitcher.id:pitchers.slice().sort((a,b)=>(b.pitchSpeed||0)-(a.pitchSpeed||0))[0]?.id;
- const rows=Array.from({length:9},(_,i)=>'<div class="lineup-row"><b>'+ (i+1) +'棒</b><select id="lineup'+i+'">'+eligible.map(p=>'<option value="'+p.id+'" '+(lineup[i]===p.id?'selected':'')+'>'+p.name+'（'+p.pos+'）｜打擊 '+p.contact+'｜長打 '+p.power+'｜走力 '+p.speed+'｜守備 '+p.field+'</option>').join('')+'</select></div>').join('');
- modal('<h2>📋 賽前先發陣容</h2><p>'+m.name+'　對手：'+m.team+'</p><p>請先選先發投手，再安排九名先發打者與棒次，按下確認後才會開始比賽。</p><div class="panel"><label>⚾ 先發投手</label><select id="starterPitcher" style="width:100%;margin-top:6px">'+pitchers.map(p=>'<option value="'+p.id+'" '+(p.id===selectedPitcher?'selected':'')+'>'+p.name+'｜球速 '+p.pitchSpeed+'｜控球 '+p.control+'｜體力 '+p.stamina+'%｜綜合 '+calc(p)+'</option>').join('')+'</select></div><h3 style="margin-top:12px">先發打序（每位球員不可重複）</h3><div id="lineupRows">'+rows+'</div><button class="primary" style="width:100%;margin-top:12px" onclick="confirmLineup()">確認先發，開始比賽</button><button style="width:100%;margin-top:7px" onclick="closeModal()">取消</button>');
+ const rows=Array.from({length:9},(_,i)=>'<div class="lineup-row"><b>'+ (i+1) +'棒</b><select id="lineup'+i+'">'+eligible.map(p=>'<option value="'+p.id+'" '+(String(lineup[i])===String(p.id)?'selected':'')+'>'+p.name+'（'+p.pos+'）｜打擊 '+p.contact+'｜長打 '+p.power+'｜走力 '+p.speed+'｜守備 '+p.field+'</option>').join('')+'</select></div>').join('');
+ modal('<h2>📋 賽前先發陣容</h2><p>'+m.name+'　對手：'+m.team+'</p><p>請先選先發投手，再安排九名先發打者與棒次，按下確認後才會開始比賽。</p><div class="panel"><label>⚾ 先發投手</label><select id="starterPitcher" style="width:100%;margin-top:6px">'+pitchers.map(p=>'<option value="'+p.id+'" '+(String(p.id)===String(selectedPitcher)?'selected':'')+'>'+p.name+'｜球速 '+p.pitchSpeed+'｜控球 '+p.control+'｜體力 '+p.stamina+'%｜綜合 '+calc(p)+'</option>').join('')+'</select></div><h3 style="margin-top:12px">先發打序（每位球員不可重複）</h3><div id="lineupRows">'+rows+'</div><button class="primary" style="width:100%;margin-top:12px" onclick="confirmLineup()">確認先發，開始比賽</button><button style="width:100%;margin-top:7px" onclick="closeModal()">取消</button>');
 }
 function confirmLineup(){
  const m=currentMatch,sp=$('starterPitcher'),eligible=G.players.filter(p=>p.pos!=='投手');
  if(!sp){alert('請先選擇先發投手。');return}
- const pitcher=G.players.find(p=>p.id===+sp.value);
- const ids=Array.from({length:9},(_,i)=>+$('lineup'+i).value);
- if(new Set(ids).size!==9){alert('先發九人不可重複，請調整棒次。');return}
- // 將本場確認的先發打序與投手存入球隊資料，下一場自動預設沿用。
+ const pitcher=G.players.find(p=>String(p.id)===String(sp.value));
+ const ids=Array.from({length:9},(_,i)=>{const el=$('lineup'+i);return el?G.players.find(p=>String(p.id)===String(el.value)&&p.pos!=='投手')?.id:null});
+ if(!pitcher){alert('找不到所選投手，請重新選擇。');return}
+ if(ids.some(id=>id==null)||new Set(ids.map(String)).size!==9){alert('先發九人不可重複，請調整棒次。');return}
+ // 立即存入隊伍資料及獨立本機記錄，下一場和重新整理後都能沿用。
  G.savedLineup=ids.slice();G.savedPitcherId=pitcher.id;
- m.pitcher=pitcher;m.lineup=ids;m.lineupIndex=0;m.batter=G.players.find(p=>p.id===ids[0])||eligible[0];m.usedIds=[...ids,pitcher.id];m.active='bat';m.half='top';m.inning=1;m.outs=0;m.bases=[null,null,null];m.logs.push('先發投手：'+pitcher.name+'；先發打序已確認。');matchScreen();
+ try{localStorage.setItem('eikanSavedLineup',JSON.stringify({lineup:ids,pitcherId:pitcher.id,school:G.school||''}))}catch(e){}
+ m.pitcher=pitcher;m.lineup=ids;m.lineupIndex=0;m.batter=G.players.find(p=>String(p.id)===String(ids[0]))||eligible[0];m.usedIds=[...ids,pitcher.id];m.active='bat';m.half='top';m.inning=1;m.outs=0;m.bases=[null,null,null];m.logs.push('先發投手：'+pitcher.name+'；先發打序已確認並已儲存，下一場將沿用。');matchScreen();
 }
 function scheduleHTML(){
  return '<div class="grid"><section class="panel"><h2>📅 賽季日程</h2><p>點選比賽即可先安排先發投手、先發九人與棒次。</p>'+[[4,'春季練習賽','summer'],[7,'夏季地方大會','summer'],[8,'夏季甲子園大賽','koshien'],[9,'秋季地方大會','autumn'],[10,'秋季地區大會','regional'],[3,'春季選拔甲子園大賽','spring']].map(([mo,n,t])=>'<div class="between stat" style="margin:7px 0"><span>'+mo+'月　'+n+'</span><button class="primary" onclick="startTournament(\''+t+'\')">安排先發／開賽</button></div>').join('')+'<button onclick="advanceMonth()">前進下一個月 ▶</button></section><aside class="panel"><h2>🏆 賽季紀錄</h2><p>夏季地方大會：'+(G.events.summer||'尚未舉行')+'</p><p>秋季地方大會：'+(G.events.autumn||'尚未舉行')+'</p><p>春季選拔：'+(G.events.spring||'尚未舉行')+'</p><p>職棒指名：'+(G.events.draft||'尚未舉行')+'</p></aside></div>';
