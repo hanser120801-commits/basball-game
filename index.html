@@ -11,7 +11,7 @@
 <div id="setup" class="panel setup"><h1 class="gold">⚾ 榮冠棒球學校模擬器</h1><p>打造你的棒球名門，從平凡新生一路挑戰甲子園！</p><label>請輸入學校名稱</label><input id="schoolInput" maxlength="18" placeholder="例如：榮冠高中"><p class="muted">單機存檔保存在此瀏覽器。適合手機直向遊玩。</p><button class="primary" style="width:100%" onclick="startGame()">創立棒球部</button></div>
 <div id="game" class="hidden">
 <header class="top"><div class="stat"><small>🏫 學校</small><strong id="schoolName">榮冠高中</strong></div><div class="stat"><small>🏅 學校聲譽</small><strong id="rep">默默無聞</strong></div><div class="stat"><small>💰 球隊資金</small><strong id="money">¥ 1,000,000</strong></div><div class="stat"><small>🌸 當前日期</small><strong id="date">第1年 4月</strong></div></header>
-<nav class="nav"><button onclick="showTab('home')">🏠 球隊總覽</button><button onclick="showTab('roster')">👥 球員名單</button><button onclick="showTab('training')">🏋️ 練習訓練</button><button onclick="showTab('schedule')">📅 比賽日程</button><button onclick="showTab('records')">📜 事件紀錄</button><button onclick="saveGame()">💾 存檔</button><button onclick="loadGame()">📂 讀檔</button></nav>
+<nav class="nav"><button onclick="showTab('home')">🏠 球隊總覽</button><button onclick="showTab('roster')">👥 球員名單</button><button onclick="showTab('training')">🏋️ 練習訓練</button><button onclick="showTab('schedule')">📅 比賽日程</button><button onclick="showTab('records')">📜 事件紀錄</button><button onclick="saveGame()">💾 存檔</button><button onclick="loadGame()">📂 讀檔</button><button id="screenshotBtn" onclick="screenshotGame()">📸 匯出遊戲截圖</button></nav>
 <div id="view"></div><div class="foot">榮冠棒球學校模擬器 · 復古像素風單機原型 · 每次操作皆可在遊戲內完成</div>
 </div></div><div id="modalRoot"></div>
 <script>
@@ -2110,5 +2110,35 @@ window.runTrainingEvent=function(index){
 
 })();
 </script>
+
+<script>
+/* 遊戲內匯出 PNG：不依賴 Android 系統截圖快捷鍵 */
+window.screenshotGame = async function(){
+ const btn=document.getElementById('screenshotBtn');
+ const target=document.getElementById('game');
+ if(!target||target.classList.contains('hidden')){alert('請先進入遊戲，再匯出截圖。');return;}
+ const oldText=btn?btn.textContent:'';
+ if(btn){btn.disabled=true;btn.textContent='正在製作 PNG…';}
+ try{
+  if(!window.html2canvas){
+   await new Promise((resolve,reject)=>{
+    const script=document.createElement('script');
+    script.src='https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+    script.onload=resolve;script.onerror=()=>reject(new Error('截圖工具載入失敗，請確認網路連線後重試。'));
+    document.head.appendChild(script);
+   });
+  }
+  const canvas=await window.html2canvas(target,{backgroundColor:'#091626',scale:2,useCORS:true,logging:false,windowWidth:Math.max(document.documentElement.clientWidth,target.scrollWidth)});
+  const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));
+  if(!blob)throw new Error('圖片產生失敗，請再試一次。');
+  const url=URL.createObjectURL(blob),a=document.createElement('a');
+  a.href=url;a.download='榮冠棒球學校模擬器-'+new Date().toISOString().slice(0,10)+'.png';
+  document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1500);
+  alert('截圖 PNG 已匯出。若手機沒有自動下載，請到瀏覽器的下載項目查看。');
+ }catch(err){alert('無法匯出截圖：'+(err&&err.message?err.message:'未知錯誤')+'\n也可以嘗試用 Chrome 開啟遊戲後再操作。');}
+ finally{if(btn){btn.disabled=false;btn.textContent=oldText||'📸 匯出遊戲截圖';}}
+};
+</script>
+
 </body>
 </html>
