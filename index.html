@@ -1898,3 +1898,89 @@ function autoPlayMatch(){
  };
 })();
 </script>
+
+
+<script>
+/* 修正特訓流程：每次隨機抽取事件，先播動畫再顯示整體能力結算，避免 render 提前覆蓋動畫 */
+(function(){
+ const pool=[
+  {name:'凌晨三點的揮棒聲',desc:'全隊打者在夜間加練，手感可能突然開竅。',stat:'contact',chance:78,gain:1,loss:0,who:'batter'},
+  {name:'打擊籠連續 100 球',desc:'反覆修正擊球點，成效穩定但成長有限。',stat:'contact',chance:68,gain:2,loss:1,who:'batter'},
+  {name:'重錘揮棒挑戰',desc:'用加重球棒訓練長打，成功可大幅提升力量。',stat:'power',chance:48,gain:3,loss:1,who:'batter'},
+  {name:'逆風全壘打特訓',desc:'迎著強風練習擊球，成功時力量爆發。',stat:'power',chance:32,gain:4,loss:2,who:'batter'},
+  {name:'球場階梯衝刺',desc:'反覆衝上看台階梯，鍛鍊短距離爆發力。',stat:'speed',chance:72,gain:1,loss:0,who:'any'},
+  {name:'輪胎拖行訓練',desc:'拖著輪胎衝刺，辛苦但可能突破速度瓶頸。',stat:'speed',chance:44,gain:3,loss:1,who:'any'},
+  {name:'反應球地獄',desc:'教練隨機彈球，考驗第一時間的守備反應。',stat:'field',chance:62,gain:2,loss:1,who:'fielder'},
+  {name:'泥地接球修行',desc:'在泥地反覆撲接，成功能提升守備能力。',stat:'field',chance:42,gain:3,loss:1,who:'fielder'},
+  {name:'捕手配球密談',desc:'捕手與教練研究配球，提升投手控球。',stat:'control',chance:55,gain:3,loss:1,who:'pitcher'},
+  {name:'牛棚 50 球加碼',desc:'投手挑戰高強度牛棚，成功可提升球速。',stat:'pitchSpeed',chance:46,gain:3,loss:1,who:'pitcher'},
+  {name:'暴雨中的投球',desc:'在惡劣天候維持投球姿勢，高風險訓練。',stat:'pitchSpeed',chance:28,gain:5,loss:2,who:'pitcher'},
+  {name:'山路耐力合宿',desc:'全隊進行山路長跑，磨練精神與體能。',stat:'spirit',chance:58,gain:2,loss:1,who:'any'},
+  {name:'魔鬼教練的特別課',desc:'教練挑出一名球員進行高強度個別指導。',stat:'random',chance:27,gain:4,loss:2,who:'any'},
+  {name:'傳說中的秘密菜單',desc:'內容完全保密，成功時隨機能力大幅提升。',stat:'random',chance:16,gain:6,loss:2,who:'any'},
+  {name:'隊長帶隊自主練習',desc:'球員互相指導，整體穩定成長但突破有限。',stat:'team',chance:74,gain:1,loss:0,who:'team'},
+  {name:'校友職棒選手返校',desc:'職棒校友親自指導，成功時多名球員受益。',stat:'team',chance:36,gain:2,loss:1,who:'team'},
+  {name:'極限守備輪轉',desc:'連續模擬比賽情境，可能讓多名野手進步。',stat:'teamField',chance:39,gain:2,loss:1,who:'team'},
+  {name:'全隊特打日',desc:'全隊打者進行額外特打，成效取決於臨場狀態。',stat:'teamBat',chance:43,gain:2,loss:1,who:'team'}
+ ];
+ const labels={contact:'打擊',power:'長打',speed:'走力',field:'守備',control:'控球',pitchSpeed:'球速',spirit:'精神'};
+ const choose=a=>a[Math.floor(Math.random()*a.length)];
+ function candidates(e){
+  const ps=G.players||[];
+  if(e.who==='pitcher')return ps.filter(p=>p.pos==='投手');
+  if(e.who==='fielder')return ps.filter(p=>p.pos!=='投手');
+  if(e.who==='batter')return ps.filter(p=>p.pos!=='投手');
+  return ps;
+ }
+ function statFor(p,e){if(e.stat==='random')return choose(['contact','power','speed','field',...(p.pos==='投手'?['control','pitchSpeed']:[])]);return e.stat}
+ function adjust(p,stat,delta){
+  const old=Number(p[stat])||0;
+  let cap=Number(p.cap)||100;
+  if(stat==='pitchSpeed')cap=Math.min(cap,150);
+  if(stat==='control'||stat==='spirit')cap=Math.min(cap,100);
+  if(['contact','power','speed','field'].includes(stat))cap=Math.min(cap,100);
+  p[stat]=clamp(old+delta,0,cap);
+  return p[stat]-old;
+ }
+ function applyEvent(e,success){
+  const ps=candidates(e); if(!ps.length)return [];
+  let targets, changes=[];
+  if(e.stat==='team')targets=ps;
+  else if(e.stat==='teamField')targets=ps.filter(p=>p.pos!=='投手');
+  else if(e.stat==='teamBat')targets=ps.filter(p=>p.pos!=='投手');
+  else targets=[choose(ps)];
+  targets.forEach(p=>{
+   let stat=e.stat==='team'?'spirit':e.stat==='teamField'?'field':e.stat==='teamBat'?'contact':statFor(p,e);
+   let delta=success?e.gain:(e.loss&&Math.random()<.55?-e.loss:0);
+   if(e.stat==='team'||e.stat==='teamField'||e.stat==='teamBat')delta=success?Math.max(1,Math.ceil(e.gain/2)):(e.loss&&Math.random()<.25?-1:0);
+   const actual=adjust(p,stat,delta);
+   if(actual)changes.push({name:p.name,stat:labels[stat]||stat,delta:actual});
+  });
+  G.players.forEach(p=>p.overall=calc(p));
+  return changes;
+ }
+ trainingEvent=function(){
+  if(!G||!Array.isArray(G.players)||!G.players.length)return;
+  const options=[]; const available=pool.slice();
+  while(options.length<4&&available.length){options.push(available.splice(Math.floor(Math.random()*available.length),1)[0]);}
+  window.__trainingOptions=options;
+  modal('<h2>🎲 今日的特訓機會</h2><p>每次進入都會隨機遇到不同訓練事件。選擇你的挑戰：成功率越低，成功時成長越高；失敗可能毫無收穫，也可能小幅退步。</p>'+options.map((e,i)=>'<div class="stat" style="margin:9px 0;padding:12px"><b>'+e.name+'</b><p>'+e.desc+'</p><p>成功率 <b class="gold">'+e.chance+'%</b>　成功成長 +'+e.gain+'　失敗 '+(e.loss?'可能 -'+e.loss:'不會下降')+'</p><button class="primary" style="width:100%" onclick="runTrainingEvent('+i+')">挑戰這項特訓</button></div>').join('')+'<button style="width:100%" onclick="closeModal()">先不訓練</button>');
+ };
+ window.runTrainingEvent=function(index){
+  const e=(window.__trainingOptions||[])[index]; if(!e||!G)return;
+  const before=(G.players||[]).map(p=>({id:p.id,name:p.name,overall:Number(p.overall)||calc(p)}));
+  const success=Math.random()*100<e.chance;
+  const changes=applyEvent(e,success);
+  const overall=(G.players||[]).map(p=>{const b=before.find(x=>x.id===p.id);return {name:p.name,before:b?b.overall:0,after:Number(p.overall)||0,delta:(Number(p.overall)||0)-(b?b.overall:0)}}).filter(x=>x.delta);
+  const headline=success?'訓練成功！':'訓練失敗……';
+  const anim='<style>@keyframes trainingBurst{0%{transform:scale(.2) rotate(-15deg);opacity:0;filter:blur(5px)}60%{transform:scale(1.2) rotate(5deg);opacity:1;filter:blur(0)}100%{transform:scale(1);opacity:1}}@keyframes trainingGlow{0%,100%{opacity:.65}50%{opacity:1}}.training-scene{padding:22px 8px;text-align:center;animation:trainingBurst .75s ease-out}.training-icon{font-size:64px;line-height:1.3;animation:trainingGlow .45s infinite}.training-track{height:10px;background:#333;border-radius:9px;overflow:hidden;margin:18px 0}.training-fill{height:100%;width:100%;background:'+(success?'#56c271':'#e45b5b')+';transform-origin:left;animation:trainingFill 1.25s ease-out}@keyframes trainingFill{from{transform:scaleX(0)}to{transform:scaleX(1)}}</style><div class="training-scene"><div class="training-icon">'+(success?'✨⚾🎉':'💥⚾😵')+'</div><h2 class="'+(success?'gold':'dangertext')+'">'+headline+'</h2><h3>'+e.name+'</h3><p>'+e.desc+'</p><p>成功率 '+e.chance+'% · 擲骰結果：'+(success?'成功':'失敗')+'</p><div class="training-track"><div class="training-fill"></div></div><p>'+(success?'教練正在確認訓練成果……':'大家整理狀態，確認是否有能力下降……')+'</p></div>';
+  modal(anim);
+  log(e.name+(success?'成功！':'失敗。')+(changes.length?'能力變化：'+changes.map(c=>c.name+' '+c.stat+(c.delta>0?'+':'')+c.delta).join('、'):'本次沒有能力數值變化。'));
+  setTimeout(function(){
+   const overallHtml=overall.length?overall.map(x=>x.name+'：整體 '+x.before+' → '+x.after+'（'+(x.delta>0?'+':'')+x.delta+'）').join('<br>'):'本次沒有球員整體能力變化。';
+   modal('<h2>📊 球員整體能力結算</h2><p>'+e.name+'：'+(success?'成功':'失敗')+'</p><div class="stat">'+overallHtml+'</div><div class="stat" style="margin-top:8px"><b>個別能力變化</b><p>'+(changes.length?changes.map(c=>c.name+'｜'+c.stat+' '+(c.delta>0?'+':'')+c.delta).join('<br>'):'本次沒有個別能力數值變化。')+'</p></div><button class="primary" style="width:100%;margin-top:10px" onclick="closeModal();showTab(&quot;training&quot;)">完成</button>');
+   render();
+  },2200);
+ };
+})();
+</script>
