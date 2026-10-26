@@ -184,8 +184,12 @@ function startTournament(type){
 }
 function lineupSetup(){
  const m=currentMatch,eligible=G.players.filter(p=>p.pos!=='投手'),pitchers=G.players.filter(p=>p.pos==='投手');
- const lineup=eligible.slice().sort((a,b)=>calc(b)-calc(a)).slice(0,9).map(p=>p.id);
- const selectedPitcher=pitchers.slice().sort((a,b)=>(b.pitchSpeed||0)-(a.pitchSpeed||0))[0]?.id;
+ // 優先沿用上場確認過的先發打序；若球員名單變動，才退回能力排序。
+ const saved=Array.isArray(G.savedLineup)?G.savedLineup:[];
+ const savedIsValid=saved.length===9&&new Set(saved).size===9&&saved.every(id=>eligible.some(p=>p.id===id));
+ const lineup=savedIsValid?saved.slice():eligible.slice().sort((a,b)=>calc(b)-calc(a)).slice(0,9).map(p=>p.id);
+ const savedPitcher=G.players.find(p=>p.id===G.savedPitcherId&&p.pos==='投手');
+ const selectedPitcher=savedPitcher?savedPitcher.id:pitchers.slice().sort((a,b)=>(b.pitchSpeed||0)-(a.pitchSpeed||0))[0]?.id;
  const rows=Array.from({length:9},(_,i)=>'<div class="lineup-row"><b>'+ (i+1) +'棒</b><select id="lineup'+i+'">'+eligible.map(p=>'<option value="'+p.id+'" '+(lineup[i]===p.id?'selected':'')+'>'+p.name+'（'+p.pos+'）｜打擊 '+p.contact+'｜長打 '+p.power+'｜走力 '+p.speed+'｜守備 '+p.field+'</option>').join('')+'</select></div>').join('');
  modal('<h2>📋 賽前先發陣容</h2><p>'+m.name+'　對手：'+m.team+'</p><p>請先選先發投手，再安排九名先發打者與棒次，按下確認後才會開始比賽。</p><div class="panel"><label>⚾ 先發投手</label><select id="starterPitcher" style="width:100%;margin-top:6px">'+pitchers.map(p=>'<option value="'+p.id+'" '+(p.id===selectedPitcher?'selected':'')+'>'+p.name+'｜球速 '+p.pitchSpeed+'｜控球 '+p.control+'｜體力 '+p.stamina+'%｜綜合 '+calc(p)+'</option>').join('')+'</select></div><h3 style="margin-top:12px">先發打序（每位球員不可重複）</h3><div id="lineupRows">'+rows+'</div><button class="primary" style="width:100%;margin-top:12px" onclick="confirmLineup()">確認先發，開始比賽</button><button style="width:100%;margin-top:7px" onclick="closeModal()">取消</button>');
 }
@@ -195,6 +199,8 @@ function confirmLineup(){
  const pitcher=G.players.find(p=>p.id===+sp.value);
  const ids=Array.from({length:9},(_,i)=>+$('lineup'+i).value);
  if(new Set(ids).size!==9){alert('先發九人不可重複，請調整棒次。');return}
+ // 將本場確認的先發打序與投手存入球隊資料，下一場自動預設沿用。
+ G.savedLineup=ids.slice();G.savedPitcherId=pitcher.id;
  m.pitcher=pitcher;m.lineup=ids;m.lineupIndex=0;m.batter=G.players.find(p=>p.id===ids[0])||eligible[0];m.usedIds=[...ids,pitcher.id];m.active='bat';m.half='top';m.inning=1;m.outs=0;m.bases=[null,null,null];m.logs.push('先發投手：'+pitcher.name+'；先發打序已確認。');matchScreen();
 }
 function scheduleHTML(){
