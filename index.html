@@ -187,11 +187,13 @@ function lineupSetup(){
  // 同時從隊伍資料與獨立本機記錄讀取，避免進入下一場時被初始排序覆蓋。
  let stored=null;
  try{stored=JSON.parse(localStorage.getItem('eikanSavedLineup')||'null')}catch(e){}
- const saved=Array.isArray(G.savedLineup)&&G.savedLineup.length===9?G.savedLineup:(stored&&Array.isArray(stored.lineup)?stored.lineup:[]);
+ // 同一所學校以本機最近一次確認的打線為準，避免舊的 G 存檔覆蓋新打線。
+ const storedMatches=stored&&Array.isArray(stored.lineup)&&(!stored.school||stored.school===(G.school||''));
+ const saved=storedMatches?stored.lineup:(Array.isArray(G.savedLineup)&&G.savedLineup.length===9?G.savedLineup:[]);
  const resolved=saved.map(id=>eligible.find(p=>String(p.id)===String(id))).filter(Boolean);
  const savedIsValid=saved.length===9&&resolved.length===9&&new Set(resolved.map(p=>String(p.id))).size===9;
  const lineup=savedIsValid?resolved.map(p=>p.id):eligible.slice().sort((a,b)=>calc(b)-calc(a)).slice(0,9).map(p=>p.id);
- const savedPitcherId=G.savedPitcherId!=null?G.savedPitcherId:(stored?stored.pitcherId:null);
+ const savedPitcherId=storedMatches&&stored.pitcherId!=null?stored.pitcherId:G.savedPitcherId;
  const savedPitcher=pitchers.find(p=>String(p.id)===String(savedPitcherId));
  const selectedPitcher=savedPitcher?savedPitcher.id:pitchers.slice().sort((a,b)=>(b.pitchSpeed||0)-(a.pitchSpeed||0))[0]?.id;
  const rows=Array.from({length:9},(_,i)=>'<div class="lineup-row"><b>'+ (i+1) +'棒</b><select id="lineup'+i+'">'+eligible.map(p=>'<option value="'+p.id+'" '+(String(lineup[i])===String(p.id)?'selected':'')+'>'+p.name+'（'+p.pos+'）｜打擊 '+p.contact+'｜長打 '+p.power+'｜走力 '+p.speed+'｜守備 '+p.field+'</option>').join('')+'</select></div>').join('');
@@ -2154,5 +2156,27 @@ window.screenshotGame = async function(){
 };
 </script>
 
+<script>
+/* 最後一道保險：每次實際開啟賽前先發視窗，都先同步本機最新打線到遊戲狀態。 */
+(function(){
+ const _lineupSetupFinal=lineupSetup;
+ lineupSetup=function(){
+  if(G){
+   try{
+    const x=JSON.parse(localStorage.getItem('eikanSavedLineup')||'null');
+    if(x&&Array.isArray(x.lineup)&&x.lineup.length===9&&(!x.school||x.school===(G.school||''))){
+     const eligible=G.players.filter(p=>p.pos!=='投手');
+     const resolved=x.lineup.map(id=>eligible.find(p=>String(p.id)===String(id))).filter(Boolean);
+     if(resolved.length===9&&new Set(resolved.map(p=>String(p.id))).size===9){
+      G.savedLineup=resolved.map(p=>p.id);
+      if(x.pitcherId!=null)G.savedPitcherId=x.pitcherId;
+     }
+    }
+   }catch(e){}
+  }
+  return _lineupSetupFinal.apply(this,arguments);
+ };
+})();
+</script>
 </body>
 </html>
